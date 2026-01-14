@@ -1,0 +1,87 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user has admin role
+    function isAdmin() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper function to check if user is technician or admin
+    function isTechnician() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'technician'];
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Admins can read/write all users
+      allow read, write: if isAdmin();
+      // Allow creating own user document on first login
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      // Allow updating own last login
+      allow update: if isAuthenticated() && request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin', 'displayName', 'photoURL']);
+    }
+
+    // Passwords collection
+    match /passwords/{passwordId} {
+      // Technicians can read passwords they created
+      allow read: if isTechnician();
+      // Technicians can create passwords
+      allow create: if isTechnician();
+      // Technicians can update status of passwords they created
+      allow update: if isTechnician() && resource.data.createdBy == request.auth.uid;
+      // Only admins can delete
+      allow delete: if isAdmin();
+      // Note: Password viewing by end users is handled by Cloud Functions
+    }
+
+    // API Keys collection - Admin only
+    match /api_keys/{keyId} {
+      allow read, write: if isAdmin();
+    }
+
+    // IP Whitelist collection - Admin only
+    match /ip_whitelist/{ipId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Word Lists collection
+    match /word_lists/{listId} {
+      // Technicians can read
+      allow read: if isTechnician();
+      // Only admins can write
+      allow write: if isAdmin();
+    }
+
+    // Email Templates collection - Admin only
+    match /email_templates/{templateId} {
+      allow read: if isTechnician();
+      allow write: if isAdmin();
+    }
+
+    // Audit Logs collection
+    match /audit_logs/{logId} {
+      // Technicians can read
+      allow read: if isTechnician();
+      // Only Cloud Functions can write (via Admin SDK)
+      allow write: if false;
+    }
+
+    // Settings collection - Admin only
+    match /settings/{settingId} {
+      allow read: if isTechnician();
+      allow write: if isAdmin();
+    }
+  }
+}

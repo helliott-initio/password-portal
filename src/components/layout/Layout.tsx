@@ -1,0 +1,20 @@
+import type { ReactNode } from 'react';
+import { Header } from './Header';
+import styles from './Layout.module.css';
+
+interface LayoutProps {
+  children: ReactNode;
+}
+
+export function Layout({ children }: LayoutProps) {
+  return (
+    <div className={styles.layout}>
+      <Header />
+      <main className={styles.main}>{children}</main>
+      <footer className={styles.footer}>
+        <p>Password Portal - Central IT Team</p>
+        <p>Initio Learning Trust</p>
+      </footer>
+    </div>
+  );
+}
