@@ -55,6 +55,10 @@ export function QueuePage() {
   const [batchResults, setBatchResults] = useState<UploadResult[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Delete confirmation state (click-twice pattern)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     loadPasswords();
   }, [filterStatus]);
@@ -159,8 +163,33 @@ export function QueuePage() {
     }
   };
 
-  const handleDelete = async (passwordId: string) => {
-    if (!confirm('Are you sure you want to permanently delete this record?')) return;
+  const handleDeleteClick = (passwordId: string) => {
+    // If already confirming this item, perform the delete
+    if (deleteConfirmId === passwordId) {
+      performDelete(passwordId);
+      return;
+    }
+
+    // Clear any existing timeout
+    if (deleteTimeoutRef.current) {
+      clearTimeout(deleteTimeoutRef.current);
+    }
+
+    // Set this item as pending confirmation
+    setDeleteConfirmId(passwordId);
+
+    // Auto-reset after 3 seconds
+    deleteTimeoutRef.current = setTimeout(() => {
+      setDeleteConfirmId(null);
+    }, 3000);
+  };
+
+  const performDelete = async (passwordId: string) => {
+    // Clear the confirmation state
+    setDeleteConfirmId(null);
+    if (deleteTimeoutRef.current) {
+      clearTimeout(deleteTimeoutRef.current);
+    }
 
     setActionLoading(passwordId);
     try {
@@ -600,15 +629,19 @@ export function QueuePage() {
                         )}
                         {user?.role === 'admin' && (
                           <button
-                            className={`${styles.actionBtn} ${styles.danger}`}
-                            onClick={() => handleDelete(password.id)}
+                            className={`${styles.actionBtn} ${styles.danger} ${deleteConfirmId === password.id ? styles.confirmDelete : ''}`}
+                            onClick={() => handleDeleteClick(password.id)}
                             disabled={!!actionLoading}
-                            title="Delete"
+                            title={deleteConfirmId === password.id ? "Click again to confirm delete" : "Delete"}
                           >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3,6 5,6 21,6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
+                            {deleteConfirmId === password.id ? (
+                              <span className={styles.confirmText}>Confirm?</span>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3,6 5,6 21,6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            )}
                           </button>
                         )}
                       </div>

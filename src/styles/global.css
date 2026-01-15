@@ -24,6 +24,8 @@
   --color-warning-light: #fef3c7;
   --color-error: #ef4444;
   --color-error-light: #fee2e2;
+  --color-yellow: #FFCE32;
+  --color-yellow-light: #fef9e7;
 
   /* Text - Better contrast */
   --color-text-primary: #1e293b;

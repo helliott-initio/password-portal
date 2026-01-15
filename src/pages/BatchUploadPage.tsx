@@ -18,10 +18,19 @@ interface BatchRow {
 
 interface UploadResult {
   email: string;
+  name: string;
   success: boolean;
   link?: string;
   error?: string;
+  emailSent?: boolean;
 }
+
+// Example CSV data for preview
+const EXAMPLE_CSV_DATA = [
+  { email: 'john.smith@example.com', name: 'John Smith', password: 'Sunset-Tiger-42', notes: 'New starter' },
+  { email: 'jane.doe@example.com', name: 'Jane Doe', password: 'Ocean-Mountain-88', notes: '' },
+  { email: 'bob.wilson@example.com', name: 'Bob Wilson', password: '', notes: 'Password reset' },
+];
 
 export function BatchUploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,6 +38,9 @@ export function BatchUploadPage() {
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState<UploadResult[]>([]);
   const [step, setStep] = useState<'upload' | 'preview' | 'results'>('upload');
+  const [sendEmails, setSendEmails] = useState(false);
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -96,29 +108,38 @@ export function BatchUploadPage() {
 
     setUploading(true);
     const uploadResults: UploadResult[] = [];
+    const newBatchId = `batch-${Date.now()}`;
+    setBatchId(newBatchId);
+    setUploadProgress({ current: 0, total: validRows.length });
 
     try {
       const createPasswordLink = httpsCallable(functions, 'createPasswordLink');
 
-      for (const row of validRows) {
+      for (let i = 0; i < validRows.length; i++) {
+        const row = validRows[i];
+        setUploadProgress({ current: i + 1, total: validRows.length });
+
         try {
           const response = await createPasswordLink({
             recipientEmail: row.email,
             recipientName: row.name,
             password: row.password,
-            notes: row.notes,
-            sendNotification: false,
+            notes: `${row.notes}${row.notes ? ' | ' : ''}Batch: ${newBatchId}`,
+            sendNotification: sendEmails,
           });
 
           const data = response.data as { link: string };
           uploadResults.push({
             email: row.email,
+            name: row.name,
             success: true,
             link: data.link,
+            emailSent: sendEmails,
           });
         } catch (error) {
           uploadResults.push({
             email: row.email,
+            name: row.name,
             success: false,
             error: 'Failed to create link',
           });
@@ -167,6 +188,9 @@ export function BatchUploadPage() {
     setRows([]);
     setResults([]);
     setStep('upload');
+    setSendEmails(false);
+    setBatchId(null);
+    setUploadProgress({ current: 0, total: 0 });
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -185,54 +209,91 @@ export function BatchUploadPage() {
         </div>
 
         {step === 'upload' && (
-          <Card>
-            <CardHeader>
-              <CardTitle subtitle="Upload a CSV file to create multiple password links">
-                Upload CSV
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className={styles.uploadArea}>
-                <div className={styles.uploadIcon}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17,8 12,3 7,8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
+          <div className={styles.uploadGrid}>
+            <Card>
+              <CardHeader>
+                <CardTitle subtitle="Upload a CSV file to create multiple password links">
+                  Upload CSV
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className={styles.uploadArea}>
+                  <div className={styles.uploadIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17,8 12,3 7,8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                  </div>
+                  <p>Drag and drop a CSV file here, or click to browse</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileSelect}
+                    className={styles.fileInput}
+                  />
+                  <div className={styles.uploadActions}>
+                    <Button
+                      variant="primary"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Browse Files
+                    </Button>
+                    <Button variant="ghost" onClick={handleDownloadTemplate}>
+                      Download Template
+                    </Button>
+                  </div>
                 </div>
-                <p>Drag and drop a CSV file here, or click to browse</p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileSelect}
-                  className={styles.fileInput}
-                />
-                <div className={styles.uploadActions}>
-                  <Button
-                    variant="primary"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    Browse Files
-                  </Button>
-                  <Button variant="ghost" onClick={handleDownloadTemplate}>
-                    Download Template
-                  </Button>
-                </div>
-              </div>
 
-              <div className={styles.formatInfo}>
-                <h4>CSV Format</h4>
-                <p>Your CSV should have these columns:</p>
-                <ul>
-                  <li><strong>email</strong> (required) - Recipient email address</li>
-                  <li><strong>name</strong> - Recipient name</li>
-                  <li><strong>password</strong> - Leave blank to auto-generate</li>
-                  <li><strong>notes</strong> - Internal notes</li>
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
+                <div className={styles.formatInfo}>
+                  <h4>CSV Format</h4>
+                  <p>Your CSV should have these columns:</p>
+                  <ul>
+                    <li><strong>email</strong> (required) - Recipient email address</li>
+                    <li><strong>name</strong> - Recipient name</li>
+                    <li><strong>password</strong> - Leave blank to auto-generate</li>
+                    <li><strong>notes</strong> - Internal notes</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle subtitle="This is what your CSV should look like">
+                  Example CSV Preview
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className={styles.exampleCsv}>
+                  <div className={styles.csvHeader}>
+                    <span>email</span>
+                    <span>name</span>
+                    <span>password</span>
+                    <span>notes</span>
+                  </div>
+                  {EXAMPLE_CSV_DATA.map((row, i) => (
+                    <div key={i} className={styles.csvRow}>
+                      <span>{row.email}</span>
+                      <span>{row.name}</span>
+                      <span className={styles.csvPassword}>{row.password || <em className={styles.autoGen}>(auto-generated)</em>}</span>
+                      <span>{row.notes || <em className={styles.empty}>-</em>}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className={styles.exampleTips}>
+                  <h4>Tips for Success</h4>
+                  <ul>
+                    <li>Leave the password column empty to auto-generate secure passwords</li>
+                    <li>Make sure email addresses are valid - invalid ones will be flagged</li>
+                    <li>You can review and edit all entries before creating links</li>
+                    <li>After upload, you can send all emails at once or individually from the queue</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {step === 'preview' && (
@@ -326,8 +387,39 @@ export function BatchUploadPage() {
                   </table>
                 </div>
 
+                <div className={styles.uploadOptions}>
+                  <label className={styles.checkbox}>
+                    <input
+                      type="checkbox"
+                      checked={sendEmails}
+                      onChange={(e) => setSendEmails(e.target.checked)}
+                    />
+                    <span className={styles.checkboxMark}></span>
+                    <span className={styles.checkboxLabel}>
+                      Send notification emails immediately
+                      <span className={styles.checkboxHint}>
+                        Recipients will receive an email with their password link
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                {uploading && (
+                  <div className={styles.progressBar}>
+                    <div className={styles.progressLabel}>
+                      Creating links... {uploadProgress.current} of {uploadProgress.total}
+                    </div>
+                    <div className={styles.progressTrack}>
+                      <div
+                        className={styles.progressFill}
+                        style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className={styles.formActions}>
-                  <Button variant="ghost" onClick={handleReset}>
+                  <Button variant="ghost" onClick={handleReset} disabled={uploading}>
                     Cancel
                   </Button>
                   <Button
@@ -336,7 +428,10 @@ export function BatchUploadPage() {
                     loading={uploading}
                     disabled={validCount === 0}
                   >
-                    Create {validCount} Password Links
+                    {sendEmails
+                      ? `Create & Send ${validCount} Password Links`
+                      : `Create ${validCount} Password Links`
+                    }
                   </Button>
                 </div>
               </CardContent>
@@ -352,7 +447,13 @@ export function BatchUploadPage() {
                   <span className={`${styles.summaryValue} ${styles.success}`}>
                     {successCount}
                   </span>
-                  <span className={styles.summaryLabel}>Successful</span>
+                  <span className={styles.summaryLabel}>Links Created</span>
+                </div>
+                <div className={styles.summaryItem}>
+                  <span className={`${styles.summaryValue} ${sendEmails ? styles.success : ''}`}>
+                    {results.filter(r => r.emailSent).length}
+                  </span>
+                  <span className={styles.summaryLabel}>Emails Sent</span>
                 </div>
                 <div className={styles.summaryItem}>
                   <span className={`${styles.summaryValue} ${styles.error}`}>
@@ -363,35 +464,77 @@ export function BatchUploadPage() {
               </div>
             </Card>
 
+            {!sendEmails && successCount > 0 && (
+              <Card className={styles.nextStepsCard}>
+                <div className={styles.nextSteps}>
+                  <div className={styles.nextStepsIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 2L11 13M22 2L15 22 11 13 2 9 22 2Z" />
+                    </svg>
+                  </div>
+                  <div className={styles.nextStepsContent}>
+                    <h4>Ready to send emails?</h4>
+                    <p>
+                      Your password links have been created. You can send notification emails
+                      to all recipients from the Queue page.
+                    </p>
+                    <a href={`/admin/queue?batch=${batchId}`} className={styles.nextStepsLink}>
+                      <Button variant="primary">
+                        Go to Queue to Send Emails
+                      </Button>
+                    </a>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             <Card>
-              <CardHeader>
-                <CardTitle subtitle="Download results to share links with recipients">
+              <CardHeader
+                action={
+                  <Button variant="secondary" onClick={handleDownloadResults}>
+                    Download Results CSV
+                  </Button>
+                }
+              >
+                <CardTitle subtitle={sendEmails ? "Links created and emails sent" : "Download results to share links with recipients"}>
                   Results
                 </CardTitle>
-                <Button variant="secondary" onClick={handleDownloadResults}>
-                  Download Results CSV
-                </Button>
               </CardHeader>
               <CardContent>
                 <div className={styles.tableWrapper}>
                   <table className={styles.table}>
                     <thead>
                       <tr>
-                        <th>Email</th>
+                        <th>Recipient</th>
                         <th>Status</th>
+                        <th>Email Sent</th>
                         <th>Link</th>
                       </tr>
                     </thead>
                     <tbody>
                       {results.map((result, index) => (
                         <tr key={index}>
-                          <td>{result.email}</td>
+                          <td>
+                            <div className={styles.recipientCell}>
+                              <span className={styles.recipientName}>{result.name || '-'}</span>
+                              <span className={styles.recipientEmail}>{result.email}</span>
+                            </div>
+                          </td>
                           <td>
                             {result.success ? (
-                              <span className={styles.validBadge}>Success</span>
+                              <span className={styles.validBadge}>Created</span>
                             ) : (
                               <span className={styles.invalidBadge}>{result.error}</span>
                             )}
+                          </td>
+                          <td>
+                            {result.success ? (
+                              result.emailSent ? (
+                                <span className={styles.sentBadge}>Sent</span>
+                              ) : (
+                                <span className={styles.pendingBadge}>Pending</span>
+                              )
+                            ) : '-'}
                           </td>
                           <td>
                             {result.link ? (
