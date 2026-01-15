@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { ToastProvider } from './components/common/Toast';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { CreatePasswordPage } from './pages/CreatePasswordPage';
@@ -96,7 +97,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );

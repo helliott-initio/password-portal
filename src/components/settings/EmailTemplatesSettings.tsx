@@ -133,7 +133,7 @@ export function EmailTemplatesSettings() {
 
   const previewHtml = formHtmlBody
     .replace(/{{recipientName}}/g, 'John Smith')
-    .replace(/{{link}}/g, 'https://passwords.initiolearning.org/p/example-uuid');
+    .replace(/{{link}}/g, 'https://password.initiolearning.org/p/example-uuid');
 
   if (loading) {
     return (
@@ -147,18 +147,21 @@ export function EmailTemplatesSettings() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader
+        action={
+          <div className={styles.headerActions}>
+            <Button variant="ghost" onClick={handleReset}>
+              Reset to Default
+            </Button>
+            <Button variant="primary" onClick={handleSave} loading={saving}>
+              Save Template
+            </Button>
+          </div>
+        }
+      >
         <CardTitle subtitle="Customize email notifications sent to recipients">
           Email Templates
         </CardTitle>
-        <div className={styles.headerActions}>
-          <Button variant="ghost" onClick={handleReset}>
-            Reset to Default
-          </Button>
-          <Button variant="primary" onClick={handleSave} loading={saving}>
-            Save Template
-          </Button>
-        </div>
       </CardHeader>
       <CardContent>
         {/* Variables info */}

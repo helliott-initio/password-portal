@@ -1,3 +1,5 @@
+/* Dashboard Page - High Contrast Design */
+
 .page {
   display: flex;
   flex-direction: column;
@@ -12,10 +14,11 @@
 }
 
 .title {
-  font-size: 1.75rem;
+  font-size: 1.625rem;
   font-weight: 700;
   color: var(--color-text-primary);
   margin: 0;
+  letter-spacing: -0.025em;
 }
 
 /* Stats grid */
@@ -28,20 +31,29 @@
 .statCard {
   text-align: center;
   padding: 1.5rem !important;
+  box-shadow: var(--shadow-card);
+  border: none !important;
+  transition: all var(--transition-fast);
+}
+
+.statCard:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
 }
 
 .statValue {
-  font-size: 2.5rem;
+  font-size: 2.75rem;
   font-weight: 700;
   color: var(--color-deep-blue);
   line-height: 1;
   margin-bottom: 0.5rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .statLabel {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* Table */
@@ -62,16 +74,21 @@
 }
 
 .table th {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.6875rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--color-text-secondary);
-  background: var(--color-border-light);
+  background: var(--color-bg-subtle);
+  border-bottom: 2px solid var(--color-border);
 }
 
 .table tbody tr:hover {
-  background: var(--color-pale-bg);
+  background: #f8fafc;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .recipient {
@@ -81,7 +98,7 @@
 }
 
 .recipientName {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--color-text-primary);
 }
 
@@ -94,26 +111,27 @@
 .statusBadge {
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.625rem;
-  font-size: 0.75rem;
-  font-weight: 500;
+  padding: 0.3125rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
   border-radius: var(--radius-full);
-  text-transform: capitalize;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .statusPending {
-  background: var(--color-warning-light);
-  color: var(--color-warning);
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .statusSent {
-  background: rgba(137, 204, 202, 0.2);
-  color: #0d9488;
+  background: #ccfbf1;
+  color: #0f766e;
 }
 
 .statusViewed {
-  background: var(--color-success-light);
-  color: var(--color-success);
+  background: #d1fae5;
+  color: #047857;
 }
 
 .statusExpired {
@@ -122,37 +140,40 @@
 }
 
 .statusRevoked {
-  background: var(--color-error-light);
-  color: var(--color-error);
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 .sourceBadge {
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.625rem;
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
   border-radius: var(--radius-sm);
-  background: var(--color-border-light);
+  background: var(--color-bg-subtle);
   color: var(--color-text-secondary);
   text-transform: capitalize;
+  border: 1px solid var(--color-border);
 }
 
 /* Empty state */
 .empty {
   text-align: center;
   padding: 3rem 1rem;
-  color: var(--color-text-secondary);
 }
 
 .empty p {
+  color: var(--color-text-secondary);
   margin-bottom: 1rem;
+  font-size: 0.9375rem;
 }
 
 .loading {
   text-align: center;
   padding: 2rem;
   color: var(--color-text-secondary);
+  font-weight: 500;
 }
 
 /* Responsive */
@@ -164,6 +185,10 @@
   .header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .statValue {
+    font-size: 2rem;
   }
 }
 

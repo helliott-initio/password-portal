@@ -22,15 +22,19 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
-      // Users can read their own profile
+      // Users can read their own profile by UID
       allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Allow authenticated users to query by their own email (for pre-added user lookup)
+      allow read: if isAuthenticated() && resource.data.email == request.auth.token.email;
       // Admins can read/write all users
       allow read, write: if isAdmin();
       // Allow creating own user document on first login
       allow create: if isAuthenticated() && request.auth.uid == userId;
       // Allow updating own last login
       allow update: if isAuthenticated() && request.auth.uid == userId &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin', 'displayName', 'photoURL']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin', 'displayName', 'photoURL', 'pending']);
+      // Allow deleting pre-added placeholder (when migrating to real UID)
+      allow delete: if isAuthenticated() && resource.data.email == request.auth.token.email;
     }
 
     // Passwords collection

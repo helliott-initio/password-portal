@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/common/Button';
@@ -7,6 +7,8 @@ import styles from './LoginPage.module.css';
 export function LoginPage() {
   const { user, loading, signIn } = useAuth();
   const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
     if (user && !loading) {
@@ -15,10 +17,16 @@ export function LoginPage() {
   }, [user, loading, navigate]);
 
   const handleSignIn = async () => {
+    setError(null);
+    setSigningIn(true);
     try {
       await signIn();
-    } catch (error) {
-      console.error('Sign in failed:', error);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sign in failed';
+      setError(message);
+      console.error('Sign in failed:', err);
+    } finally {
+      setSigningIn(false);
     }
   };
 
@@ -26,16 +34,11 @@ export function LoginPage() {
     <div className={styles.container}>
       <div className={styles.card}>
         <div className={styles.logo}>
-          <svg
-            className={styles.logoIcon}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
+          <img
+            src="/initio-logo.png"
+            alt="Initio Learning Trust"
+            className={styles.logoImg}
+          />
         </div>
 
         <h1 className={styles.title}>Password Portal</h1>
@@ -43,9 +46,20 @@ export function LoginPage() {
           Securely share passwords with users
         </p>
 
+        {error && (
+          <div className={styles.error}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>{error}</span>
+          </div>
+        )}
+
         <Button
           onClick={handleSignIn}
-          loading={loading}
+          loading={loading || signingIn}
           size="lg"
           fullWidth
           icon={
@@ -61,7 +75,7 @@ export function LoginPage() {
         </Button>
 
         <p className={styles.notice}>
-          Access restricted to Initio Learning Trust staff
+          Access restricted to authorised staff only
         </p>
       </div>
 

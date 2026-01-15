@@ -32,6 +32,11 @@
   color: var(--color-aqua);
 }
 
+.logoImg {
+  height: 32px;
+  width: auto;
+}
+
 .logoText {
   font-size: 1.25rem;
   font-weight: 600;

@@ -9,16 +9,11 @@ export function Header() {
     <header className={styles.header}>
       <div className={styles.container}>
         <div className={styles.logo}>
-          <svg
-            className={styles.logoIcon}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
+          <img
+            src="https://support.initiolearning.org/api/attachment/image?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImY1NDQ4N2MwLWQ3NjEtNGE1ZS05ZWQ5LTFjYzQ5YTg2YTQ3ZCJ9.sYcGIY8SEdO2m85nY09vXxGEAZOUI2frNEGOc8pepLU"
+            alt="Initio"
+            className={styles.logoImg}
+          />
           <span className={styles.logoText}>Password Portal</span>
         </div>
 

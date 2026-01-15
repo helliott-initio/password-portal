@@ -1,30 +1,26 @@
 // Password generator using custom word lists
-// Generates memorable passwords like "Sunset-Tiger-42-Cloud"
+// Simple: TreeBridge47 (Word + Word + 2 digits)
+// Secure: Movie3Cartoon)Bottle (Word + digit + Word + symbol + Word)
 
-// Default word lists (can be overridden from Firestore)
-const defaultAdjectives = [
-  'Swift', 'Bright', 'Golden', 'Silver', 'Crystal', 'Sunny', 'Happy', 'Lucky',
-  'Clever', 'Brave', 'Calm', 'Cool', 'Warm', 'Fresh', 'Strong', 'Quick',
-  'Smart', 'Gentle', 'Noble', 'Royal', 'Cosmic', 'Stellar', 'Ocean', 'Forest',
-  'Mountain', 'River', 'Thunder', 'Lightning', 'Sunset', 'Sunrise', 'Midnight',
-  'Autumn', 'Spring', 'Summer', 'Winter', 'Arctic', 'Tropical', 'Radiant', 'Mystic'
-];
-
-const defaultNouns = [
+// Default word lists
+const defaultWords = [
+  'Tree', 'Bridge', 'Cloud', 'River', 'Stone', 'Light', 'Storm', 'Flame',
   'Tiger', 'Eagle', 'Falcon', 'Phoenix', 'Dragon', 'Lion', 'Wolf', 'Bear',
-  'Hawk', 'Dolphin', 'Panther', 'Jaguar', 'Leopard', 'Cobra', 'Raven', 'Owl',
-  'Fox', 'Stag', 'Heron', 'Crane', 'Swan', 'Kite', 'Lynx', 'Puma',
-  'Cloud', 'Storm', 'Wave', 'Stone', 'Star', 'Moon', 'Comet', 'Blaze',
-  'Frost', 'Flame', 'Thunder', 'Breeze', 'Peak', 'Valley', 'Grove', 'Meadow'
+  'Swift', 'Bright', 'Golden', 'Silver', 'Crystal', 'Sunny', 'Ocean', 'Forest',
+  'Mountain', 'Thunder', 'Sunset', 'Autumn', 'Spring', 'Summer', 'Winter', 'Cosmic',
+  'Movie', 'Cartoon', 'Bottle', 'Planet', 'Garden', 'Castle', 'Arrow', 'Shield',
+  'Rocket', 'Meadow', 'Breeze', 'Frost', 'Comet', 'Blaze', 'Valley', 'Grove',
+  'Hawk', 'Dolphin', 'Panther', 'Jaguar', 'Cobra', 'Raven', 'Owl', 'Fox',
+  'Brave', 'Calm', 'Cool', 'Warm', 'Fresh', 'Strong', 'Quick', 'Smart'
 ];
+
+const symbols = ['!', '@', '#', '$', '%', '&', '*', ')', '+', '='];
+
+export type PasswordMode = 'simple' | 'secure';
 
 export interface GeneratorOptions {
-  adjectives?: string[];
-  nouns?: string[];
-  includeNumber?: boolean;
-  numberRange?: { min: number; max: number };
-  separator?: string;
-  wordCount?: number;
+  words?: string[];
+  mode?: PasswordMode;
 }
 
 // Cryptographically secure random number generator
@@ -39,42 +35,46 @@ function pickRandom<T>(arr: T[]): T {
   return arr[secureRandom(arr.length)];
 }
 
-// Generate random number in range
-function randomNumber(min: number, max: number): number {
-  return min + secureRandom(max - min + 1);
+// Generate random single digit (0-9)
+function randomDigit(): string {
+  return secureRandom(10).toString();
 }
 
-// Generate a memorable password
+// Generate random two digit number (10-99)
+function randomTwoDigits(): string {
+  return (10 + secureRandom(90)).toString();
+}
+
+// Generate a Simple password: Word + Word + 2 digits
+// Example: TreeBridge47
+function generateSimplePassword(words: string[]): string {
+  const word1 = pickRandom(words);
+  const word2 = pickRandom(words);
+  const digits = randomTwoDigits();
+
+  return `${word1}${word2}${digits}`;
+}
+
+// Generate a Secure password: Word + digit + Word + symbol + Word
+// Example: Movie3Cartoon)Bottle
+function generateSecurePassword(words: string[]): string {
+  const word1 = pickRandom(words);
+  const digit = randomDigit();
+  const word2 = pickRandom(words);
+  const symbol = pickRandom(symbols);
+  const word3 = pickRandom(words);
+
+  return `${word1}${digit}${word2}${symbol}${word3}`;
+}
+
+// Generate a password based on mode
 export function generatePassword(options: GeneratorOptions = {}): string {
-  const {
-    adjectives = defaultAdjectives,
-    nouns = defaultNouns,
-    includeNumber = true,
-    numberRange = { min: 10, max: 99 },
-    separator = '-',
-    wordCount = 2,
-  } = options;
+  const { words = defaultWords, mode = 'simple' } = options;
 
-  const parts: string[] = [];
-
-  // Add words (alternating adjective/noun pattern)
-  for (let i = 0; i < wordCount; i++) {
-    if (i % 2 === 0) {
-      parts.push(pickRandom(adjectives));
-    } else {
-      parts.push(pickRandom(nouns));
-    }
+  if (mode === 'secure') {
+    return generateSecurePassword(words);
   }
-
-  // Add number
-  if (includeNumber) {
-    const num = randomNumber(numberRange.min, numberRange.max);
-    // Insert number in a random position (not at the start)
-    const insertPos = 1 + secureRandom(parts.length);
-    parts.splice(insertPos, 0, num.toString());
-  }
-
-  return parts.join(separator);
+  return generateSimplePassword(words);
 }
 
 // Generate multiple password options for user to choose from
@@ -103,30 +103,19 @@ export function validatePassword(password: string): {
 // Get word list from Firestore word lists
 export function buildGeneratorOptions(
   wordLists: { name: string; words: string[] }[],
-  selectedList?: string
+  selectedList?: string,
+  mode?: PasswordMode
 ): GeneratorOptions {
+  const options: GeneratorOptions = { mode };
+
   if (!selectedList || wordLists.length === 0) {
-    return {}; // Use defaults
+    return options; // Use defaults
   }
 
   const list = wordLists.find((l) => l.name === selectedList);
-  if (!list) {
-    return {}; // Use defaults
+  if (list) {
+    options.words = list.words;
   }
 
-  // Split words into adjectives (first half) and nouns (second half)
-  // Or if the list is small, use all words for both
-  const words = list.words;
-  if (words.length < 10) {
-    return {
-      adjectives: words,
-      nouns: words,
-    };
-  }
-
-  const mid = Math.floor(words.length / 2);
-  return {
-    adjectives: words.slice(0, mid),
-    nouns: words.slice(mid),
-  };
+  return options;
 }

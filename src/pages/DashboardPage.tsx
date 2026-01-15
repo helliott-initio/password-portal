@@ -136,15 +136,18 @@ export function DashboardPage() {
 
         {/* Recent links */}
         <Card>
-          <CardHeader>
+          <CardHeader
+            action={
+              <Link to="/admin/queue">
+                <Button variant="ghost" size="sm">
+                  View All
+                </Button>
+              </Link>
+            }
+          >
             <CardTitle subtitle="Recent password links awaiting view">
               Pending Links
             </CardTitle>
-            <Link to="/admin/queue">
-              <Button variant="ghost" size="sm">
-                View All
-              </Button>
-            </Link>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -154,7 +157,7 @@ export function DashboardPage() {
                 <p>No pending password links</p>
                 <Link to="/admin/create">
                   <Button variant="secondary" size="sm">
-                    Create your first link
+                    Create Link
                   </Button>
                 </Link>
               </div>

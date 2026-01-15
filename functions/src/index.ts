@@ -44,7 +44,7 @@ interface PasswordDoc {
  * Create a password link (callable function for authenticated users)
  */
 export const createPasswordLink = onCall(
-  { region: 'europe-west2', secrets: [encryptionKey], invoker: 'public' },
+  { region: 'europe-west2', secrets: [encryptionKey, smtpUser, smtpPass], invoker: 'public' },
   async (request) => {
     // Check authentication
     if (!request.auth) {
@@ -108,17 +108,67 @@ export const createPasswordLink = onCall(
         timestamp: admin.firestore.Timestamp.now(),
       });
 
-      // TODO: Send email notification if requested
-      if (sendNotification) {
-        // Email sending will be implemented separately
-        await db.collection('passwords').doc(linkId).update({
-          status: 'sent',
-          emailSent: true,
-          emailSentAt: admin.firestore.Timestamp.now(),
-        });
-      }
-
       const link = `${appUrl.value()}/p/${linkId}`;
+
+      // Send email notification if requested
+      if (sendNotification) {
+        try {
+          // Get email template
+          const templateDoc = await db.collection('email_templates').doc('default').get();
+          let subject = 'Your New Password - {{recipientName}}';
+          let htmlBody = getDefaultHtmlTemplate();
+          let textBody = getDefaultTextTemplate();
+
+          if (templateDoc.exists) {
+            const templateData = templateDoc.data();
+            if (templateData) {
+              subject = templateData.subject || subject;
+              htmlBody = templateData.htmlBody || htmlBody;
+              textBody = templateData.textBody || textBody;
+            }
+          }
+
+          // Replace template variables
+          const name = recipientName || recipientEmail.split('@')[0];
+          subject = subject.replace(/{{recipientName}}/g, name);
+          subject = subject.replace(/{{recipientEmail}}/g, recipientEmail);
+          htmlBody = htmlBody.replace(/{{recipientName}}/g, name);
+          htmlBody = htmlBody.replace(/{{recipientEmail}}/g, recipientEmail);
+          htmlBody = htmlBody.replace(/{{link}}/g, link);
+          textBody = textBody.replace(/{{recipientName}}/g, name);
+          textBody = textBody.replace(/{{recipientEmail}}/g, recipientEmail);
+          textBody = textBody.replace(/{{link}}/g, link);
+
+          // Create transporter and send
+          const transporter = nodemailer.createTransport({
+            host: smtpHost.value(),
+            port: parseInt(smtpPort.value(), 10),
+            secure: false,
+            auth: {
+              user: smtpUser.value(),
+              pass: smtpPass.value(),
+            },
+          });
+
+          await transporter.sendMail({
+            from: `"Password Portal" <${smtpUser.value()}>`,
+            to: recipientEmail,
+            subject,
+            text: textBody,
+            html: htmlBody,
+          });
+
+          // Update password document with email sent status
+          await db.collection('passwords').doc(linkId).update({
+            status: 'sent',
+            emailSent: true,
+            emailSentAt: admin.firestore.Timestamp.now(),
+          });
+        } catch (emailError) {
+          console.error('Failed to send email on creation:', emailError);
+          // Don't fail the whole operation, just log - email can be resent from queue
+        }
+      }
 
       return {
         id: linkId,
@@ -352,7 +402,7 @@ export const regeneratePasswordLink = onCall(
  * External API for creating password links (for Salamander automation)
  */
 export const api = onRequest(
-  { region: 'europe-west2', cors: false, secrets: [encryptionKey] },
+  { region: 'europe-west2', cors: false, secrets: [encryptionKey, smtpUser, smtpPass] },
   async (req, res) => {
     // Only allow POST for creating passwords
     if (req.method !== 'POST') {
@@ -410,7 +460,7 @@ export const api = onRequest(
       const encrypted = encryptPassword(password, encryptionKey.value());
 
       // Create password document
-      const passwordDoc: Omit<PasswordDoc, 'id'> = {
+      const passwordDoc = {
         encryptedPassword: encrypted.encryptedPassword,
         iv: encrypted.iv,
         authTag: encrypted.authTag,
@@ -422,9 +472,9 @@ export const api = onRequest(
         createdAt: admin.firestore.Timestamp.now(),
         status: sendEmail ? 'sent' : 'pending',
         emailSent: !!sendEmail,
-        emailSentAt: sendEmail ? admin.firestore.Timestamp.now() : undefined,
         source: 'api',
         apiKeyId: apiKeyDoc.id,
+        ...(sendEmail && { emailSentAt: admin.firestore.Timestamp.now() }),
       };
 
       await db.collection('passwords').doc(linkId).set(passwordDoc);
@@ -448,9 +498,60 @@ export const api = onRequest(
         timestamp: admin.firestore.Timestamp.now(),
       });
 
-      // TODO: Send email if requested
-
       const link = `${appUrl.value()}/p/${linkId}`;
+
+      // Send email if requested
+      if (sendEmail) {
+        try {
+          // Get email template
+          const templateDoc = await db.collection('email_templates').doc('default').get();
+          let subject = 'Your New Password - {{recipientName}}';
+          let htmlBody = getDefaultHtmlTemplate();
+          let textBody = getDefaultTextTemplate();
+
+          if (templateDoc.exists) {
+            const templateData = templateDoc.data();
+            if (templateData) {
+              subject = templateData.subject || subject;
+              htmlBody = templateData.htmlBody || htmlBody;
+              textBody = templateData.textBody || textBody;
+            }
+          }
+
+          // Replace template variables
+          const name = recipientName || recipientEmail.split('@')[0];
+          subject = subject.replace(/{{recipientName}}/g, name);
+          subject = subject.replace(/{{recipientEmail}}/g, recipientEmail);
+          htmlBody = htmlBody.replace(/{{recipientName}}/g, name);
+          htmlBody = htmlBody.replace(/{{recipientEmail}}/g, recipientEmail);
+          htmlBody = htmlBody.replace(/{{link}}/g, link);
+          textBody = textBody.replace(/{{recipientName}}/g, name);
+          textBody = textBody.replace(/{{recipientEmail}}/g, recipientEmail);
+          textBody = textBody.replace(/{{link}}/g, link);
+
+          // Create transporter and send
+          const transporter = nodemailer.createTransport({
+            host: smtpHost.value(),
+            port: parseInt(smtpPort.value(), 10),
+            secure: false,
+            auth: {
+              user: smtpUser.value(),
+              pass: smtpPass.value(),
+            },
+          });
+
+          await transporter.sendMail({
+            from: `"Password Portal" <${smtpUser.value()}>`,
+            to: recipientEmail,
+            subject,
+            text: textBody,
+            html: htmlBody,
+          });
+        } catch (emailError) {
+          console.error('Failed to send email via API:', emailError);
+          // Don't fail the request, just log - the link was still created
+        }
+      }
 
       res.status(201).json({
         success: true,

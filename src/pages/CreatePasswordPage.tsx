@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../services/firebase';
 import { Layout } from '../components/layout/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Input, Textarea } from '../components/common/Input';
-import { generatePassword, generatePasswordOptions } from '../utils/passwordGenerator';
+import { generatePassword, type PasswordMode } from '../utils/passwordGenerator';
 import type { CreatePasswordForm, PasswordCreationResult } from '../types';
 import styles from './CreatePasswordPage.module.css';
 
@@ -17,26 +17,21 @@ export function CreatePasswordPage() {
     notes: '',
     sendNotification: false,
   });
-  const [passwordOptions, setPasswordOptions] = useState<string[]>([]);
+  const [passwordMode, setPasswordMode] = useState<PasswordMode>('simple');
   const [result, setResult] = useState<PasswordCreationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<'password' | 'link' | null>(null);
 
-  const handleGeneratePasswords = () => {
-    const options = generatePasswordOptions(4);
-    setPasswordOptions(options);
-  };
+  // Auto-generate password on mount and when mode changes
+  useEffect(() => {
+    const newPassword = generatePassword({ mode: passwordMode });
+    setForm((prev) => ({ ...prev, password: newPassword }));
+  }, [passwordMode]);
 
-  const handleSelectPassword = (password: string) => {
-    setForm({ ...form, password });
-    setPasswordOptions([]);
-  };
-
-  const handleRegenerateOne = (index: number) => {
-    const newOptions = [...passwordOptions];
-    newOptions[index] = generatePassword();
-    setPasswordOptions(newOptions);
+  const handleRegenerate = () => {
+    const newPassword = generatePassword({ mode: passwordMode });
+    setForm({ ...form, password: newPassword });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,13 +72,12 @@ export function CreatePasswordPage() {
     setForm({
       recipientEmail: '',
       recipientName: '',
-      password: '',
+      password: generatePassword({ mode: passwordMode }),
       notes: '',
       sendNotification: false,
     });
     setResult(null);
     setError(null);
-    setPasswordOptions([]);
   };
 
   if (result) {
@@ -176,50 +170,69 @@ export function CreatePasswordPage() {
               <div className={styles.passwordSection}>
                 <div className={styles.passwordHeader}>
                   <label className={styles.passwordLabel}>Password</label>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleGeneratePasswords}
-                  >
-                    Generate Options
-                  </Button>
                 </div>
 
-                {passwordOptions.length > 0 && (
-                  <div className={styles.passwordOptions}>
-                    {passwordOptions.map((pwd, index) => (
-                      <div key={index} className={styles.passwordOption}>
-                        <code>{pwd}</code>
-                        <div className={styles.passwordOptionActions}>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRegenerateOne(index)}
-                          >
-                            ↻
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="primary"
-                            size="sm"
-                            onClick={() => handleSelectPassword(pwd)}
-                          >
-                            Use
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* Mode Toggle */}
+                <div className={styles.modeToggle}>
+                  <button
+                    type="button"
+                    className={`${styles.modeBtn} ${passwordMode === 'simple' ? styles.active : ''}`}
+                    onClick={() => setPasswordMode('simple')}
+                  >
+                    <span className={styles.modeIcon}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M8 12h8" />
+                      </svg>
+                    </span>
+                    <span className={styles.modeContent}>
+                      <span className={styles.modeName}>Simple</span>
+                      <span className={styles.modeExample}>TreeBridge47</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.modeBtn} ${passwordMode === 'secure' ? styles.active : ''}`}
+                    onClick={() => setPasswordMode('secure')}
+                  >
+                    <span className={styles.modeIcon}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    </span>
+                    <span className={styles.modeContent}>
+                      <span className={styles.modeName}>Secure</span>
+                      <span className={styles.modeExample}>Movie3Cartoon)Bottle</span>
+                    </span>
+                  </button>
+                </div>
 
-                <Input
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="Enter or generate a password"
-                  required
-                />
+                {/* Generated Password Display */}
+                <div className={styles.generatedPassword}>
+                  <code className={styles.passwordCode}>{form.password}</code>
+                  <button
+                    type="button"
+                    className={styles.regenerateBtn}
+                    onClick={handleRegenerate}
+                    title="Generate new password"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="23,4 23,10 17,10" />
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Manual Override */}
+                <details className={styles.manualOverride}>
+                  <summary>Enter custom password</summary>
+                  <Input
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="Enter a custom password"
+                  />
+                </details>
               </div>
 
               <Textarea

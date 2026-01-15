@@ -58,6 +58,7 @@ export interface UserDoc {
   role: 'admin' | 'technician';
   createdAt: Date;
   lastLogin: Date;
+  pending?: boolean; // True if user was pre-added but hasn't signed in yet
 }
 
 export interface AuditLogDoc {
