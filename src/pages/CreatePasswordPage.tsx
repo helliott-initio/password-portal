@@ -97,7 +97,7 @@ export function CreatePasswordPage() {
 
       const data = response.data as PasswordCreationResult;
       setResult(data);
-    } catch (err) {
+    } catch {
       setError('Failed to create password link. Please try again.');
     } finally {
       setLoading(false);
