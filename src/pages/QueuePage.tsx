@@ -54,7 +54,7 @@ export function QueuePage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Pagination state
-  const [pageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(25);
   const [firstDoc, setFirstDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [pageStack, setPageStack] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
@@ -85,6 +85,12 @@ export function QueuePage() {
       loadPasswords('initial');
     }
   }, [searchEmail]);
+
+  useEffect(() => {
+    // Reset pagination when page size changes
+    setPageStack([]);
+    loadPasswords('initial');
+  }, [pageSize]);
 
   const loadPasswords = async (direction: 'initial' | 'next' | 'prev' = 'initial') => {
     setLoading(true);
@@ -729,31 +735,52 @@ export function QueuePage() {
         {/* Pagination Controls */}
         {!loading && passwords.length > 0 && (
           <div className={styles.pagination}>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handlePrevPage}
-              disabled={pageStack.length === 0}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="15,18 9,12 15,6" />
-              </svg>
-              Previous
-            </Button>
-            <span className={styles.pageInfo}>
-              Page {pageStack.length + 1}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleNextPage}
-              disabled={!hasMore}
-            >
-              Next
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="9,18 15,12 9,6" />
-              </svg>
-            </Button>
+            <div className={styles.paginationLeft}>
+              <label className={styles.pageSizeLabel}>Show:</label>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className={styles.pageSizeSelect}
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className={styles.pageSizeLabel}>per page</span>
+            </div>
+            <div className={styles.paginationCenter}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handlePrevPage}
+                disabled={pageStack.length === 0}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="15,18 9,12 15,6" />
+                </svg>
+                Previous
+              </Button>
+              <span className={styles.pageInfo}>
+                Page {pageStack.length + 1} {hasMore ? '' : '(last)'}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNextPage}
+                disabled={!hasMore}
+              >
+                Next
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9,18 15,12 9,6" />
+                </svg>
+              </Button>
+            </div>
+            <div className={styles.paginationRight}>
+              <span className={styles.itemCount}>
+                {passwords.length} {passwords.length === 1 ? 'item' : 'items'}
+              </span>
+            </div>
           </div>
         )}
       </div>
