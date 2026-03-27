@@ -84,10 +84,16 @@ export interface EmailTemplateDoc {
 
 // UI State types
 
+export interface GeneratedPassword {
+  id: string;
+  value: string;
+  copied: boolean;
+}
+
 export interface CreatePasswordForm {
   recipientEmail: string;
   recipientName: string;
-  password: string;
+  passwords: GeneratedPassword[];
   notes: string;
   sendNotification: boolean;
   selectedWordList?: string;
