@@ -7,6 +7,11 @@ import {
   getDocs,
   where,
   Timestamp,
+  startAfter,
+  endBefore,
+  limitToLast,
+  QueryDocumentSnapshot,
+  type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
@@ -22,34 +27,68 @@ export function AuditLogSettings() {
   const [filterAction, setFilterAction] = useState<FilterAction>('all');
   const [pageSize] = useState(50);
 
+  // Pagination state
+  const [firstDoc, setFirstDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [pageStack, setPageStack] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+
   useEffect(() => {
-    loadLogs();
+    // Reset pagination when filter changes
+    setPageStack([]);
+    loadLogs('initial');
   }, [filterAction]);
 
-  const loadLogs = async () => {
+  const loadLogs = async (direction: 'initial' | 'next' | 'prev' = 'initial') => {
     setLoading(true);
     try {
       const logsRef = collection(db, 'audit_logs');
       let q;
 
+      // Base query with ordering
       if (filterAction === 'all') {
-        q = query(logsRef, orderBy('timestamp', 'desc'), limit(pageSize));
+        q = query(logsRef, orderBy('timestamp', 'desc'));
       } else {
         q = query(
           logsRef,
           where('action', '==', filterAction),
-          orderBy('timestamp', 'desc'),
-          limit(pageSize)
+          orderBy('timestamp', 'desc')
         );
       }
 
+      // Apply pagination cursors
+      if (direction === 'next' && lastDoc) {
+        q = query(q, startAfter(lastDoc), limit(pageSize + 1));
+      } else if (direction === 'prev' && firstDoc) {
+        q = query(q, endBefore(firstDoc), limitToLast(pageSize + 1));
+      } else {
+        // Initial load
+        q = query(q, limit(pageSize + 1));
+      }
+
       const snapshot = await getDocs(q);
-      const logList = snapshot.docs.map((doc) => ({
+      let results = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       })) as AuditLogDoc[];
 
-      setLogs(logList);
+      // Check if there are more results
+      const hasMoreResults = results.length > pageSize;
+      setHasMore(hasMoreResults);
+
+      // Trim to page size
+      if (hasMoreResults) {
+        results = results.slice(0, pageSize);
+      }
+
+      // Store cursor documents
+      if (snapshot.docs.length > 0) {
+        setFirstDoc(snapshot.docs[0]);
+        const lastIndex = Math.min(pageSize - 1, snapshot.docs.length - 1);
+        setLastDoc(snapshot.docs[lastIndex]);
+      }
+
+      setLogs(results);
     } catch (error) {
       console.error('Error loading audit logs:', error);
     } finally {
@@ -57,7 +96,32 @@ export function AuditLogSettings() {
     }
   };
 
+  const handleNextPage = () => {
+    if (firstDoc) {
+      setPageStack([...pageStack, firstDoc]);
+    }
+    loadLogs('next');
+  };
+
+  const handlePrevPage = () => {
+    const newStack = [...pageStack];
+    const prevDoc = newStack.pop();
+    setPageStack(newStack);
+
+    if (prevDoc) {
+      setFirstDoc(prevDoc);
+      loadLogs('prev');
+    } else {
+      loadLogs('initial');
+    }
+  };
+
   const handleExport = () => {
+    // Warning about exporting current page only
+    if (!confirm(`This will export the current page (${logs.length} records). Continue?`)) {
+      return;
+    }
+
     const csv = [
       'timestamp,action,actor,target,ip,details',
       ...logs.map((log) => {
@@ -140,7 +204,7 @@ export function AuditLogSettings() {
             <option value="api_call">API Call</option>
             <option value="settings_change">Settings Change</option>
           </select>
-          <Button variant="ghost" size="sm" onClick={loadLogs}>
+          <Button variant="ghost" size="sm" onClick={() => loadLogs('initial')}>
             Refresh
           </Button>
         </div>
@@ -192,6 +256,31 @@ export function AuditLogSettings() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination controls */}
+        {!loading && logs.length > 0 && (
+          <div className={styles.pagination}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePrevPage}
+              disabled={pageStack.length === 0}
+            >
+              Previous
+            </Button>
+            <span className={styles.pageInfo}>
+              Page {pageStack.length + 1}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleNextPage}
+              disabled={!hasMore}
+            >
+              Next
+            </Button>
           </div>
         )}
       </CardContent>

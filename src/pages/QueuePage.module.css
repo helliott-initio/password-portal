@@ -920,6 +920,99 @@
   height: 16px;
 }
 
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  margin-top: 0.5rem;
+  background: var(--color-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.paginationLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.paginationCenter {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: center;
+  flex: 1;
+}
+
+.paginationRight {
+  display: flex;
+  justify-content: flex-end;
+  flex: 1;
+}
+
+.pageSizeLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.pageSizeSelect {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  background: var(--color-white);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pageSizeSelect:hover {
+  border-color: var(--color-deep-blue);
+  background: var(--color-bg-subtle);
+}
+
+.pageSizeSelect:focus {
+  outline: none;
+  border-color: var(--color-deep-blue);
+  box-shadow: 0 0 0 3px rgba(6, 78, 59, 0.1);
+}
+
+.pagination button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pageInfo {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  min-width: 120px;
+  text-align: center;
+}
+
+.itemCount {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .header {
@@ -959,6 +1052,27 @@
 
   .table th:nth-child(3),
   .table td:nth-child(3) {
+    display: none;
+  }
+
+  .pagination {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .paginationLeft,
+  .paginationCenter,
+  .paginationRight {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .paginationCenter {
+    order: -1;
+  }
+
+  .paginationRight {
     display: none;
   }
 }

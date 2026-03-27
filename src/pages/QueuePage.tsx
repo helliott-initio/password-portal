@@ -8,6 +8,12 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  limit,
+  startAfter,
+  endBefore,
+  limitToLast,
+  QueryDocumentSnapshot,
+  type DocumentData,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../services/firebase';
@@ -47,6 +53,13 @@ export function QueuePage() {
   const [searchEmail, setSearchEmail] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Pagination state
+  const [pageSize, setPageSize] = useState(25);
+  const [firstDoc, setFirstDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [pageStack, setPageStack] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+
   // Batch upload state
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
@@ -60,21 +73,50 @@ export function QueuePage() {
   const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    loadPasswords();
+    // Reset pagination when filter changes
+    setPageStack([]);
+    loadPasswords('initial');
   }, [filterStatus]);
 
-  const loadPasswords = async () => {
+  useEffect(() => {
+    // Reset pagination when search changes
+    if (searchEmail) {
+      setPageStack([]);
+      loadPasswords('initial');
+    }
+  }, [searchEmail]);
+
+  useEffect(() => {
+    // Reset pagination when page size changes
+    setPageStack([]);
+    loadPasswords('initial');
+  }, [pageSize]);
+
+  const loadPasswords = async (direction: 'initial' | 'next' | 'prev' = 'initial') => {
     setLoading(true);
     try {
       const passwordsRef = collection(db, 'passwords');
-      let q = query(passwordsRef, orderBy('createdAt', 'desc'));
+      let q;
 
+      // Base query with ordering
       if (filterStatus !== 'all') {
         q = query(
           passwordsRef,
           where('status', '==', filterStatus),
           orderBy('createdAt', 'desc')
         );
+      } else {
+        q = query(passwordsRef, orderBy('createdAt', 'desc'));
+      }
+
+      // Apply pagination cursors
+      if (direction === 'next' && lastDoc) {
+        q = query(q, startAfter(lastDoc), limit(pageSize + 1));
+      } else if (direction === 'prev' && firstDoc) {
+        q = query(q, endBefore(firstDoc), limitToLast(pageSize + 1));
+      } else {
+        // Initial load
+        q = query(q, limit(pageSize + 1));
       }
 
       const snapshot = await getDocs(q);
@@ -83,6 +125,16 @@ export function QueuePage() {
         ...doc.data(),
       })) as PasswordDoc[];
 
+      // Check if there are more results
+      const hasMoreResults = results.length > pageSize;
+      setHasMore(hasMoreResults);
+
+      // Trim to page size
+      if (hasMoreResults) {
+        results = results.slice(0, pageSize);
+      }
+
+      // Apply search filter client-side (since Firestore doesn't support full-text search)
       if (searchEmail) {
         const search = searchEmail.toLowerCase();
         results = results.filter(
@@ -92,11 +144,38 @@ export function QueuePage() {
         );
       }
 
+      // Store cursor documents
+      if (snapshot.docs.length > 0) {
+        setFirstDoc(snapshot.docs[0]);
+        const lastIndex = Math.min(pageSize - 1, snapshot.docs.length - 1);
+        setLastDoc(snapshot.docs[lastIndex]);
+      }
+
       setPasswords(results);
     } catch (error) {
       console.error('Error loading passwords:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (firstDoc) {
+      setPageStack([...pageStack, firstDoc]);
+    }
+    loadPasswords('next');
+  };
+
+  const handlePrevPage = () => {
+    const newStack = [...pageStack];
+    const prevDoc = newStack.pop();
+    setPageStack(newStack);
+
+    if (prevDoc) {
+      setFirstDoc(prevDoc);
+      loadPasswords('prev');
+    } else {
+      loadPasswords('initial');
     }
   };
 
@@ -490,7 +569,7 @@ export function QueuePage() {
                 </button>
               </div>
             )}
-            <button className={styles.refreshBtn} onClick={loadPasswords} title="Refresh">
+            <button className={styles.refreshBtn} onClick={() => loadPasswords('initial')} title="Refresh">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="23,4 23,10 17,10" />
                 <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
@@ -652,6 +731,58 @@ export function QueuePage() {
             </table>
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {!loading && passwords.length > 0 && (
+          <div className={styles.pagination}>
+            <div className={styles.paginationLeft}>
+              <label className={styles.pageSizeLabel}>Show:</label>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className={styles.pageSizeSelect}
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className={styles.pageSizeLabel}>per page</span>
+            </div>
+            <div className={styles.paginationCenter}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handlePrevPage}
+                disabled={pageStack.length === 0}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="15,18 9,12 15,6" />
+                </svg>
+                Previous
+              </Button>
+              <span className={styles.pageInfo}>
+                Page {pageStack.length + 1} {hasMore ? '' : '(last)'}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNextPage}
+                disabled={!hasMore}
+              >
+                Next
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9,18 15,12 9,6" />
+                </svg>
+              </Button>
+            </div>
+            <div className={styles.paginationRight}>
+              <span className={styles.itemCount}>
+                {passwords.length} {passwords.length === 1 ? 'item' : 'items'}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Batch Upload Panel */}
