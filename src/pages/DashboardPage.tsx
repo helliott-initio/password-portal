@@ -5,6 +5,8 @@ import { db } from '../services/firebase';
 import { Layout } from '../components/layout/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { ErrorBoundary } from '../components/common/ErrorBoundary';
+import { SkeletonStats, SkeletonTable } from '../components/common/LoadingSkeleton';
 import type { DashboardStats, PasswordDoc } from '../types';
 import styles from './DashboardPage.module.css';
 
@@ -106,101 +108,107 @@ export function DashboardPage() {
 
   return (
     <Layout>
-      <div className={styles.page}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>Dashboard</h1>
-          <Link to="/admin/create">
-            <Button variant="primary">Create Password Link</Button>
-          </Link>
-        </div>
+      <ErrorBoundary>
+        <div className={styles.page}>
+          <div className={styles.header}>
+            <h1 className={styles.title}>Dashboard</h1>
+            <Link to="/admin/create">
+              <Button variant="primary">Create Password Link</Button>
+            </Link>
+          </div>
 
-        {/* Stats cards */}
-        <div className={styles.statsGrid}>
-          <Card className={styles.statCard}>
-            <div className={styles.statValue}>{stats.todayCount}</div>
-            <div className={styles.statLabel}>Created Today</div>
-          </Card>
-          <Card className={styles.statCard}>
-            <div className={styles.statValue}>{stats.pendingCount}</div>
-            <div className={styles.statLabel}>Pending / Sent</div>
-          </Card>
-          <Card className={styles.statCard}>
-            <div className={styles.statValue}>{stats.viewedToday}</div>
-            <div className={styles.statLabel}>Viewed Today</div>
-          </Card>
-          <Card className={styles.statCard}>
-            <div className={styles.statValue}>{stats.weekCount}</div>
-            <div className={styles.statLabel}>This Week</div>
-          </Card>
-        </div>
+          {/* Stats cards */}
+          {loading ? (
+            <SkeletonStats count={4} />
+          ) : (
+            <div className={styles.statsGrid}>
+              <Card className={styles.statCard}>
+                <div className={styles.statValue}>{stats.todayCount}</div>
+                <div className={styles.statLabel}>Created Today</div>
+              </Card>
+              <Card className={styles.statCard}>
+                <div className={styles.statValue}>{stats.pendingCount}</div>
+                <div className={styles.statLabel}>Pending / Sent</div>
+              </Card>
+              <Card className={styles.statCard}>
+                <div className={styles.statValue}>{stats.viewedToday}</div>
+                <div className={styles.statLabel}>Viewed Today</div>
+              </Card>
+              <Card className={styles.statCard}>
+                <div className={styles.statValue}>{stats.weekCount}</div>
+                <div className={styles.statLabel}>This Week</div>
+              </Card>
+            </div>
+          )}
 
-        {/* Recent links */}
-        <Card>
-          <CardHeader
-            action={
-              <Link to="/admin/queue">
-                <Button variant="ghost" size="sm">
-                  View All
-                </Button>
-              </Link>
-            }
-          >
-            <CardTitle subtitle="Recent password links awaiting view">
-              Pending Links
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className={styles.loading}>Loading...</div>
-            ) : recentLinks.length === 0 ? (
-              <div className={styles.empty}>
-                <p>No pending password links</p>
-                <Link to="/admin/create">
-                  <Button variant="secondary" size="sm">
-                    Create Link
+          {/* Recent links */}
+          <Card>
+            <CardHeader
+              action={
+                <Link to="/admin/queue">
+                  <Button variant="ghost" size="sm">
+                    View All
                   </Button>
                 </Link>
-              </div>
-            ) : (
-              <div className={styles.tableWrapper}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Recipient</th>
-                      <th>Created</th>
-                      <th>Source</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentLinks.map((link) => (
-                      <tr key={link.id}>
-                        <td>
-                          <div className={styles.recipient}>
-                            <span className={styles.recipientName}>
-                              {link.recipientName || 'Unknown'}
-                            </span>
-                            <span className={styles.recipientEmail}>
-                              {link.recipientEmail}
-                            </span>
-                          </div>
-                        </td>
-                        <td>{formatDate(link.createdAt)}</td>
-                        <td>
-                          <span className={styles.sourceBadge}>
-                            {link.source}
-                          </span>
-                        </td>
-                        <td>{getStatusBadge(link.status)}</td>
+              }
+            >
+              <CardTitle subtitle="Recent password links awaiting view">
+                Pending Links
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <SkeletonTable rows={5} columns={[{ flex: 2 }, { flex: 1 }, { width: '100px' }, { width: '100px' }]} />
+              ) : recentLinks.length === 0 ? (
+                <div className={styles.empty}>
+                  <p>No pending password links</p>
+                  <Link to="/admin/create">
+                    <Button variant="secondary" size="sm">
+                      Create Link
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className={styles.tableWrapper}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Recipient</th>
+                        <th>Created</th>
+                        <th>Source</th>
+                        <th>Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                    </thead>
+                    <tbody>
+                      {recentLinks.map((link) => (
+                        <tr key={link.id}>
+                          <td>
+                            <div className={styles.recipient}>
+                              <span className={styles.recipientName}>
+                                {link.recipientName || 'Unknown'}
+                              </span>
+                              <span className={styles.recipientEmail}>
+                                {link.recipientEmail}
+                              </span>
+                            </div>
+                          </td>
+                          <td>{formatDate(link.createdAt)}</td>
+                          <td>
+                            <span className={styles.sourceBadge}>
+                              {link.source}
+                            </span>
+                          </td>
+                          <td>{getStatusBadge(link.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </ErrorBoundary>
     </Layout>
   );
 }
