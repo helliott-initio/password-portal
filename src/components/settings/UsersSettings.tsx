@@ -15,6 +15,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
+import { SkeletonTable } from '../common/LoadingSkeleton';
 import type { UserDoc } from '../../types';
 import styles from './Settings.module.css';
 
@@ -196,7 +197,7 @@ export function UsersSettings() {
 
         {/* Users list */}
         {loading ? (
-          <div className={styles.loading}>Loading...</div>
+          <SkeletonTable rows={5} columns={[{ flex: 1 }, { flex: 2 }, { width: '100px' }, { width: '80px' }, { width: '150px' }]} />
         ) : users.length === 0 ? (
           <div className={styles.empty}>
             <p>No users yet. Add your first user above.</p>

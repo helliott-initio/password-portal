@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './components/common/Toast';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { SkeletonBox } from './components/common/LoadingSkeleton';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { CreatePasswordPage } from './pages/CreatePasswordPage';
@@ -25,7 +27,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
           background: 'var(--color-pale-bg)',
         }}
       >
-        <p>Loading...</p>
+        <SkeletonBox width="200px" height="24px" />
       </div>
     );
   }
@@ -98,7 +100,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <AppRoutes />
+          <ErrorBoundary>
+            <AppRoutes />
+          </ErrorBoundary>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

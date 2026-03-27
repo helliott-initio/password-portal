@@ -15,6 +15,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input, Textarea } from '../common/Input';
+import { SkeletonCard } from '../common/LoadingSkeleton';
 import type { WordListDoc } from '../../types';
 import styles from './Settings.module.css';
 
@@ -191,7 +192,7 @@ River"
 
         {/* Word lists */}
         {loading ? (
-          <div className={styles.loading}>Loading...</div>
+          <SkeletonCard count={3} />
         ) : wordLists.length === 0 && !showAddForm ? (
           <div className={styles.empty}>
             <p>No custom word lists. Using default words for password generation.</p>

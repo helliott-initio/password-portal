@@ -16,6 +16,7 @@ import {
 import { db } from '../../services/firebase';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
+import { SkeletonTable } from '../common/LoadingSkeleton';
 import type { AuditLogDoc } from '../../types';
 import styles from './Settings.module.css';
 
@@ -211,7 +212,7 @@ export function AuditLogSettings() {
 
         {/* Logs list */}
         {loading ? (
-          <div className={styles.loading}>Loading...</div>
+          <SkeletonTable rows={10} columns={[{ width: '140px' }, { width: '100px' }, { flex: 1 }, { width: '80px' }, { width: '100px' }, { flex: 2 }]} />
         ) : logs.length === 0 ? (
           <div className={styles.empty}>
             <p>No audit logs found</p>

@@ -12,6 +12,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input, Textarea } from '../common/Input';
+import { SkeletonForm } from '../common/LoadingSkeleton';
 import type { EmailTemplateDoc } from '../../types';
 import styles from './Settings.module.css';
 
@@ -138,8 +139,13 @@ export function EmailTemplatesSettings() {
   if (loading) {
     return (
       <Card>
+        <CardHeader>
+          <CardTitle subtitle="Customize email notifications sent to recipients">
+            Email Templates
+          </CardTitle>
+        </CardHeader>
         <CardContent>
-          <div className={styles.loading}>Loading...</div>
+          <SkeletonForm fields={3} />
         </CardContent>
       </Card>
     );
