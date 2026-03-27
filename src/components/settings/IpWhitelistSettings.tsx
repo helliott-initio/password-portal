@@ -14,6 +14,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
+import { SkeletonTable } from '../common/LoadingSkeleton';
 import type { IpWhitelistDoc } from '../../types';
 import styles from './Settings.module.css';
 
@@ -151,7 +152,7 @@ export function IpWhitelistSettings() {
 
         {/* IPs list */}
         {loading ? (
-          <div className={styles.loading}>Loading...</div>
+          <SkeletonTable rows={5} columns={[{ width: '150px' }, { flex: 2 }, { flex: 1 }, { width: '100px' }, { width: '100px' }]} />
         ) : ips.length === 0 ? (
           <div className={styles.empty}>
             <p>No IPs whitelisted. API is currently open to all IPs.</p>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useIsAdmin } from '../hooks/useAuth';
 import { Layout } from '../components/layout/Layout';
 import { Card } from '../components/common/Card';
+import { ErrorBoundary } from '../components/common/ErrorBoundary';
 import { ApiKeysSettings } from '../components/settings/ApiKeysSettings';
 import { IpWhitelistSettings } from '../components/settings/IpWhitelistSettings';
 import { WordListsSettings } from '../components/settings/WordListsSettings';
@@ -59,12 +60,36 @@ export function SettingsPage() {
           </nav>
 
           <div className={styles.content}>
-            {activeTab === 'api-keys' && <ApiKeysSettings />}
-            {activeTab === 'ip-whitelist' && <IpWhitelistSettings />}
-            {activeTab === 'word-lists' && <WordListsSettings />}
-            {activeTab === 'users' && <UsersSettings />}
-            {activeTab === 'email-templates' && <EmailTemplatesSettings />}
-            {activeTab === 'audit-log' && <AuditLogSettings />}
+            {activeTab === 'api-keys' && (
+              <ErrorBoundary>
+                <ApiKeysSettings />
+              </ErrorBoundary>
+            )}
+            {activeTab === 'ip-whitelist' && (
+              <ErrorBoundary>
+                <IpWhitelistSettings />
+              </ErrorBoundary>
+            )}
+            {activeTab === 'word-lists' && (
+              <ErrorBoundary>
+                <WordListsSettings />
+              </ErrorBoundary>
+            )}
+            {activeTab === 'users' && (
+              <ErrorBoundary>
+                <UsersSettings />
+              </ErrorBoundary>
+            )}
+            {activeTab === 'email-templates' && (
+              <ErrorBoundary>
+                <EmailTemplatesSettings />
+              </ErrorBoundary>
+            )}
+            {activeTab === 'audit-log' && (
+              <ErrorBoundary>
+                <AuditLogSettings />
+              </ErrorBoundary>
+            )}
           </div>
         </div>
       </div>

@@ -12,6 +12,7 @@ import { db, functions } from '../../services/firebase';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
+import { SkeletonTable } from '../common/LoadingSkeleton';
 import type { ApiKeyDoc } from '../../types';
 import styles from './Settings.module.css';
 
@@ -233,7 +234,7 @@ X-API-Key: your-api-key-here`}
 
         {/* Keys list */}
         {loading ? (
-          <div className={styles.loading}>Loading...</div>
+          <SkeletonTable rows={3} columns={[{ flex: 2 }, { width: '120px' }, { width: '100px' }, { width: '100px' }, { width: '80px' }, { width: '100px' }]} />
         ) : apiKeys.length === 0 ? (
           <div className={styles.empty}>
             <p>No API keys created yet</p>
