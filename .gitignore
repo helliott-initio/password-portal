@@ -49,3 +49,6 @@ coverage
 .DS_Store
 Thumbs.db
 functions/.env.*
+
+# Auto Claude data directory
+.auto-claude/

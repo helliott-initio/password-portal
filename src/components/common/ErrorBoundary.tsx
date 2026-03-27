@@ -12,6 +12,61 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+interface ErrorMessage {
+  title: string;
+  message: string;
+}
+
+// Helper function to determine error type and appropriate message
+function getErrorMessage(error: Error): ErrorMessage {
+  const errorMessage = error.message.toLowerCase();
+  const errorName = error.name.toLowerCase();
+
+  // Check for network/connectivity errors
+  if (
+    errorMessage.includes('network') ||
+    errorMessage.includes('offline') ||
+    errorMessage.includes('unavailable') ||
+    errorMessage.includes('failed to fetch') ||
+    errorName.includes('networkerror')
+  ) {
+    return {
+      title: 'Network unavailable',
+      message: 'Please check your internet connection and try again.',
+    };
+  }
+
+  // Check for Firebase auth errors
+  if (
+    errorMessage.includes('auth') ||
+    errorMessage.includes('unauthenticated') ||
+    errorMessage.includes('permission') ||
+    errorMessage.includes('unauthorized')
+  ) {
+    return {
+      title: 'Authentication required',
+      message: 'Your session may have expired. Please refresh the page to sign in again.',
+    };
+  }
+
+  // Check for Firestore permission errors
+  if (
+    errorMessage.includes('permission-denied') ||
+    errorMessage.includes('insufficient permissions')
+  ) {
+    return {
+      title: 'Access denied',
+      message: 'You don\'t have permission to access this resource. Please contact your administrator.',
+    };
+  }
+
+  // Default error message
+  return {
+    title: 'Something went wrong',
+    message: 'We encountered an unexpected error. Please try again.',
+  };
+}
+
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -54,6 +109,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         return this.props.fallback(this.state.error, this.handleRetry);
       }
 
+      // Get appropriate error message based on error type
+      const errorMsg = getErrorMessage(this.state.error);
+
       // Default error UI
       return (
         <div className={styles.errorContainer}>
@@ -72,10 +130,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
             </div>
-            <h2 className={styles.title}>Something went wrong</h2>
-            <p className={styles.message}>
-              We encountered an unexpected error. Please try again.
-            </p>
+            <h2 className={styles.title}>{errorMsg.title}</h2>
+            <p className={styles.message}>{errorMsg.message}</p>
             <button
               className={styles.retryButton}
               onClick={this.handleRetry}
