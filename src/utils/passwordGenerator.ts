@@ -18,6 +18,12 @@ const symbols = ['!', '@', '#', '$', '%', '&', '*', ')', '+', '='];
 
 export type PasswordMode = 'simple' | 'secure';
 
+export interface GeneratedPassword {
+  id: string;
+  password: string;
+  mode: PasswordMode;
+}
+
 export interface GeneratorOptions {
   words?: string[];
   mode?: PasswordMode;
@@ -87,6 +93,27 @@ export function generatePasswordOptions(
     passwords.push(generatePassword(options));
   }
   return passwords;
+}
+
+// Generate a batch of passwords efficiently
+// Optimized for 500+ passwords by resolving options once
+export function generateBatch(
+  count: number,
+  options: GeneratorOptions = {}
+): GeneratedPassword[] {
+  const { words = defaultWords, mode = 'simple' } = options;
+  const generator = mode === 'secure' ? generateSecurePassword : generateSimplePassword;
+  const results: GeneratedPassword[] = new Array(count);
+
+  for (let i = 0; i < count; i++) {
+    results[i] = {
+      id: crypto.randomUUID(),
+      password: generator(words),
+      mode,
+    };
+  }
+
+  return results;
 }
 
 // Validate password strength (basic check)
