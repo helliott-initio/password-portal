@@ -3,9 +3,8 @@
   color: var(--color-white);
   padding: 0 1.5rem;
   box-shadow: var(--shadow-md);
-  position: sticky;
-  top: 0;
   z-index: 100;
+  flex-shrink: 0;
 }
 
 .container {
@@ -24,12 +23,7 @@
   gap: 0.75rem;
   text-decoration: none;
   color: var(--color-white);
-}
-
-.logoIcon {
-  width: 28px;
-  height: 28px;
-  color: var(--color-aqua);
+  flex-shrink: 0;
 }
 
 .logoImg {
@@ -43,20 +37,22 @@
   letter-spacing: -0.02em;
 }
 
-.nav {
+/* Desktop nav */
+.desktopNav {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .navLink {
-  color: rgba(255, 255, 255, 0.8);
-  padding: 0.5rem 1rem;
+  color: rgba(255, 255, 255, 0.75);
+  padding: 0.5rem 0.875rem;
   border-radius: var(--radius-md);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .navLink:hover {
@@ -64,15 +60,17 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
-.navLink.active {
+.navLinkActive {
   color: var(--color-white);
   background: rgba(137, 204, 202, 0.2);
 }
 
-.userSection {
+/* Desktop user section */
+.desktopUserSection {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 .userInfo {
@@ -112,29 +110,144 @@
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast);
 }
 
 .signOutBtn:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Responsive */
+/* Hamburger button - hidden on desktop */
+.hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--color-white);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hamburger:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Mobile drawer backdrop */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 200;
+  animation: backdropFadeIn 200ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Mobile drawer */
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 280px;
+  max-width: 85vw;
+  background: linear-gradient(180deg, var(--color-deep-blue) 0%, #1a2a33 100%);
+  z-index: 201;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 250ms ease-out;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.drawerNav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
+}
+
+.drawerNavLink {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.drawerNavLink:hover {
+  color: var(--color-white);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.drawerNavLinkActive {
+  color: var(--color-white);
+  background: rgba(137, 204, 202, 0.2);
+}
+
+.drawerUserSection {
+  margin-top: auto;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.drawerUserInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+}
+
+.drawerSignOut {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 0.75rem;
+  padding: 0 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-white);
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  transition: background var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.drawerSignOut:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Mobile breakpoint */
 @media (max-width: 768px) {
+  .header {
+    padding: 0 1rem;
+  }
+
   .container {
-    height: auto;
-    flex-wrap: wrap;
-    padding: 1rem 0;
+    height: 56px;
     gap: 1rem;
   }
 
-  .nav {
-    order: 3;
-    width: 100%;
-    justify-content: center;
+  .desktopNav,
+  .desktopUserSection {
+    display: none;
   }
 
-  .userDetails {
-    display: none;
+  .hamburger {
+    display: flex;
+  }
+
+  .logoText {
+    font-size: 1.1rem;
   }
 }

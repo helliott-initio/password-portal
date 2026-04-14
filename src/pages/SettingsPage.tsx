@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useIsAdmin } from '../hooks/useAuth';
 import { Layout } from '../components/layout/Layout';
 import { Card } from '../components/common/Card';
@@ -60,36 +61,46 @@ export function SettingsPage() {
           </nav>
 
           <div className={styles.content}>
-            {activeTab === 'api-keys' && (
-              <ErrorBoundary>
-                <ApiKeysSettings />
-              </ErrorBoundary>
-            )}
-            {activeTab === 'ip-whitelist' && (
-              <ErrorBoundary>
-                <IpWhitelistSettings />
-              </ErrorBoundary>
-            )}
-            {activeTab === 'word-lists' && (
-              <ErrorBoundary>
-                <WordListsSettings />
-              </ErrorBoundary>
-            )}
-            {activeTab === 'users' && (
-              <ErrorBoundary>
-                <UsersSettings />
-              </ErrorBoundary>
-            )}
-            {activeTab === 'email-templates' && (
-              <ErrorBoundary>
-                <EmailTemplatesSettings />
-              </ErrorBoundary>
-            )}
-            {activeTab === 'audit-log' && (
-              <ErrorBoundary>
-                <AuditLogSettings />
-              </ErrorBoundary>
-            )}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {activeTab === 'api-keys' && (
+                  <ErrorBoundary>
+                    <ApiKeysSettings />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'ip-whitelist' && (
+                  <ErrorBoundary>
+                    <IpWhitelistSettings />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'word-lists' && (
+                  <ErrorBoundary>
+                    <WordListsSettings />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'users' && (
+                  <ErrorBoundary>
+                    <UsersSettings />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'email-templates' && (
+                  <ErrorBoundary>
+                    <EmailTemplatesSettings />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'audit-log' && (
+                  <ErrorBoundary>
+                    <AuditLogSettings />
+                  </ErrorBoundary>
+                )}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
       </div>

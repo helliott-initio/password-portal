@@ -12,7 +12,7 @@ export function SkeletonBox({ width, height = '18px', className = '' }: Skeleton
     height: typeof height === 'number' ? `${height}px` : height,
   };
 
-  return <div className={`${styles.skeletonBox} ${className}`} style={style} />;
+  return <div className={`${styles.skeletonBox} ${className}`} style={style} aria-hidden="true" />;
 }
 
 interface SkeletonTableProps {
@@ -33,7 +33,7 @@ export function SkeletonTable({ rows = 5, columns = [] }: SkeletonTableProps) {
   const cols = columns.length > 0 ? columns : defaultColumns;
 
   return (
-    <div className={styles.skeletonTable}>
+    <div className={styles.skeletonTable} role="status" aria-live="polite" aria-label="Loading table">
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className={styles.skeletonRow}>
           {cols.map((col, j) => (
@@ -55,7 +55,7 @@ interface SkeletonCardProps {
 
 export function SkeletonCard({ count = 3 }: SkeletonCardProps) {
   return (
-    <div className={styles.skeletonCards}>
+    <div className={styles.skeletonCards} role="status" aria-live="polite" aria-label="Loading cards">
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className={styles.skeletonCard}>
           <SkeletonBox height="24px" width="60%" />
@@ -78,7 +78,7 @@ interface SkeletonListProps {
 
 export function SkeletonList({ items = 5, showAvatar = false }: SkeletonListProps) {
   return (
-    <div className={styles.skeletonList}>
+    <div className={styles.skeletonList} role="status" aria-live="polite" aria-label="Loading list">
       {Array.from({ length: items }).map((_, i) => (
         <div key={i} className={styles.skeletonListItem}>
           {showAvatar && (
@@ -102,7 +102,7 @@ interface SkeletonStatsProps {
 
 export function SkeletonStats({ count = 5 }: SkeletonStatsProps) {
   return (
-    <div className={styles.skeletonStats}>
+    <div className={styles.skeletonStats} role="status" aria-live="polite" aria-label="Loading stats">
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className={styles.skeletonStatCard}>
           <SkeletonBox height="32px" width="48px" />
@@ -138,7 +138,7 @@ interface SkeletonFormProps {
 
 export function SkeletonForm({ fields = 4 }: SkeletonFormProps) {
   return (
-    <div className={styles.skeletonForm}>
+    <div className={styles.skeletonForm} role="status" aria-live="polite" aria-label="Loading form">
       {Array.from({ length: fields }).map((_, i) => (
         <div key={i} className={styles.skeletonField}>
           <SkeletonBox height="14px" width="120px" />

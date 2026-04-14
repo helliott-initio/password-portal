@@ -19,6 +19,7 @@ export interface PasswordDoc {
   apiKeyId?: string;
   regeneratedFrom?: string;
   regeneratedTo?: string;
+  searchTokens?: string[];
 }
 
 export interface ApiKeyDoc {
@@ -93,10 +94,9 @@ export interface GeneratedPassword {
 export interface CreatePasswordForm {
   recipientEmail: string;
   recipientName: string;
-  passwords: GeneratedPassword[];
+  password: string;
   notes: string;
   sendNotification: boolean;
-  selectedWordList?: string;
 }
 
 export interface PasswordCreationResult {

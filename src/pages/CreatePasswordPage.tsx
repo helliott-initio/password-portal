@@ -1,98 +1,59 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../services/firebase';
 import { Layout } from '../components/layout/Layout';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card';
+import { Card, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Input, Textarea } from '../components/common/Input';
-import { PasswordList } from '../components/common/PasswordList';
-import { generateBatch, generatePassword, type PasswordMode } from '../utils/passwordGenerator';
-import type { GeneratedPassword, PasswordCreationResult } from '../types';
+import { generatePassword, type PasswordMode } from '../utils/passwordGenerator';
+import type { CreatePasswordForm, PasswordCreationResult } from '../types';
 import styles from './CreatePasswordPage.module.css';
 
-const QUANTITY_PRESETS = [1, 10, 25, 50, 100, 500];
-
-function toBatchPasswords(batch: ReturnType<typeof generateBatch>): GeneratedPassword[] {
-  return batch.map((p) => ({ id: p.id, value: p.password, copied: false }));
-}
-
 export function CreatePasswordPage() {
-  const [passwords, setPasswords] = useState<GeneratedPassword[]>([]);
-  const [quantity, setQuantity] = useState(1);
+  const [form, setForm] = useState<CreatePasswordForm>({
+    recipientEmail: '',
+    recipientName: '',
+    password: '',
+    notes: '',
+    sendNotification: false,
+  });
   const [passwordMode, setPasswordMode] = useState<PasswordMode>('simple');
-  const [showLinkForm, setShowLinkForm] = useState(false);
-  const [recipientEmail, setRecipientEmail] = useState('');
-  const [recipientName, setRecipientName] = useState('');
-  const [notes, setNotes] = useState('');
-  const [sendNotification, setSendNotification] = useState(false);
   const [result, setResult] = useState<PasswordCreationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<'password' | 'link' | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const generatePasswords = useCallback((count: number, mode: PasswordMode) => {
-    const batch = generateBatch(count, { mode });
-    setPasswords(toBatchPasswords(batch));
+  // Auto-generate password on mount and when mode changes
+  useEffect(() => {
+    const newPassword = generatePassword({ mode: passwordMode });
+    setForm((prev) => ({ ...prev, password: newPassword }));
+  }, [passwordMode]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
   }, []);
 
-  // Auto-generate on mount and when mode changes
-  useEffect(() => {
-    generatePasswords(quantity, passwordMode);
-  }, [passwordMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleGenerate = () => {
-    generatePasswords(quantity, passwordMode);
-  };
-
-  const handleQuantityChange = (value: string) => {
-    const num = Math.max(1, Math.min(1000, parseInt(value, 10) || 1));
-    setQuantity(num);
-  };
-
-  const handleCopyPassword = async (id: string) => {
-    const pw = passwords.find((p) => p.id === id);
-    if (!pw) return;
-    await navigator.clipboard.writeText(pw.value);
-    setPasswords((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, copied: true } : p))
-    );
-    setTimeout(() => {
-      setPasswords((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, copied: false } : p))
-      );
-    }, 2000);
-  };
-
-  const handleCopyAll = async () => {
-    const allPasswords = passwords.map((p) => p.value).join('\n');
-    await navigator.clipboard.writeText(allPasswords);
-  };
-
-  const handleRegenerateSingle = (id: string) => {
+  const handleRegenerate = () => {
     const newPassword = generatePassword({ mode: passwordMode });
-    setPasswords((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, value: newPassword, copied: false }
-          : p
-      )
-    );
+    setForm({ ...form, password: newPassword });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwords.length === 0) return;
     setError(null);
     setLoading(true);
 
     try {
       const createPasswordLink = httpsCallable(functions, 'createPasswordLink');
       const response = await createPasswordLink({
-        recipientEmail,
-        recipientName,
-        password: passwords[0].value,
-        notes,
-        sendNotification,
+        recipientEmail: form.recipientEmail,
+        recipientName: form.recipientName,
+        password: form.password,
+        notes: form.notes,
+        sendNotification: form.sendNotification,
       });
 
       const data = response.data as PasswordCreationResult;
@@ -104,22 +65,26 @@ export function CreatePasswordPage() {
     }
   };
 
-  const handleCopyResult = async (type: 'password' | 'link') => {
+  const handleCopy = async (type: 'password' | 'link') => {
     if (!result) return;
+
     const text = type === 'password' ? result.password : result.link;
     await navigator.clipboard.writeText(text);
     setCopied(type);
-    setTimeout(() => setCopied(null), 2000);
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    copyTimeoutRef.current = setTimeout(() => setCopied(null), 2000);
   };
 
   const handleReset = () => {
-    setRecipientEmail('');
-    setRecipientName('');
-    setNotes('');
-    setSendNotification(false);
+    setForm({
+      recipientEmail: '',
+      recipientName: '',
+      password: generatePassword({ mode: passwordMode }),
+      notes: '',
+      sendNotification: false,
+    });
     setResult(null);
     setError(null);
-    generatePasswords(quantity, passwordMode);
   };
 
   if (result) {
@@ -145,7 +110,7 @@ export function CreatePasswordPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleCopyResult('password')}
+                  onClick={() => handleCopy('password')}
                 >
                   {copied === 'password' ? 'Copied!' : 'Copy'}
                 </Button>
@@ -159,7 +124,7 @@ export function CreatePasswordPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleCopyResult('link')}
+                  onClick={() => handleCopy('link')}
                 >
                   {copied === 'link' ? 'Copied!' : 'Copy'}
                 </Button>
@@ -180,17 +145,45 @@ export function CreatePasswordPage() {
   return (
     <Layout>
       <div className={styles.page}>
-        <Card>
-          <CardHeader>
-            <CardTitle subtitle="Generate secure passwords">
-              Password Generator
-            </CardTitle>
-          </CardHeader>
+        <header className={styles.pageHeader}>
+          <h1 className={styles.pageTitle}>Create Password Link</h1>
+          <p className={styles.pageSubtitle}>
+            Generate a secure one-time password and share it via a private link.
+          </p>
+        </header>
+
+        <Card className={styles.formCard}>
           <CardContent>
-            <div className={styles.form}>
-              <div className={styles.passwordSection}>
+            <form onSubmit={handleSubmit} className={styles.form}>
+              <section className={styles.section}>
+                <h3 className={styles.sectionLabel}>Recipient</h3>
+                <div className={styles.formGrid}>
+                  <Input
+                    label="Email"
+                    type="email"
+                    value={form.recipientEmail}
+                    onChange={(e) =>
+                      setForm({ ...form, recipientEmail: e.target.value })
+                    }
+                    placeholder="user@example.com"
+                    required
+                  />
+                  <Input
+                    label="Name"
+                    value={form.recipientName}
+                    onChange={(e) =>
+                      setForm({ ...form, recipientName: e.target.value })
+                    }
+                    placeholder="John Smith"
+                  />
+                </div>
+              </section>
+
+              <section className={styles.section}>
+                <h3 className={styles.sectionLabel}>Password</h3>
+                <div className={styles.passwordSection}>
                 <div className={styles.passwordHeader}>
-                  <label className={styles.passwordLabel}>Mode</label>
+                  <label className={styles.passwordLabel}>Password</label>
                 </div>
 
                 {/* Mode Toggle */}
@@ -229,99 +222,40 @@ export function CreatePasswordPage() {
                   </button>
                 </div>
 
-                {/* Quantity Controls */}
-                <div className={styles.quantitySection}>
-                  <label className={styles.passwordLabel}>Quantity</label>
-                  <div className={styles.quantityControls}>
-                    <Input
-                      type="number"
-                      value={quantity}
-                      onChange={(e) => handleQuantityChange(e.target.value)}
-                      min={1}
-                      max={1000}
-                    />
-                    <div className={styles.presetButtons}>
-                      {QUANTITY_PRESETS.map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          className={`${styles.presetBtn} ${quantity === preset ? styles.active : ''}`}
-                          onClick={() => setQuantity(preset)}
-                        >
-                          {preset}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                {/* Generated Password Display */}
+                <div className={styles.generatedPassword}>
+                  <code className={styles.passwordCode}>{form.password}</code>
+                  <button
+                    type="button"
+                    className={styles.regenerateBtn}
+                    onClick={handleRegenerate}
+                    title="Generate new password"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="23,4 23,10 17,10" />
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                    </svg>
+                  </button>
                 </div>
 
-                <Button variant="primary" onClick={handleGenerate}>
-                  Generate
-                </Button>
-              </div>
-
-              {/* Password List */}
-              {passwords.length > 0 && (
-                <PasswordList
-                  passwords={passwords}
-                  onCopy={handleCopyPassword}
-                  onCopyAll={handleCopyAll}
-                  onRegenerate={handleRegenerateSingle}
-                />
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Create Password Link Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle subtitle="Send a password securely via one-time link">
-              Create Password Link
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!showLinkForm ? (
-              <Button variant="secondary" onClick={() => setShowLinkForm(true)}>
-                Create Password Link
-              </Button>
-            ) : (
-              <form onSubmit={handleSubmit} className={styles.form}>
-                <div className={styles.formGrid}>
+                {/* Manual Override */}
+                <details className={styles.manualOverride}>
+                  <summary>Enter custom password</summary>
                   <Input
-                    label="Recipient Email"
-                    type="email"
-                    value={recipientEmail}
-                    onChange={(e) => setRecipientEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    required
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="Enter a custom password"
                   />
-                  <Input
-                    label="Recipient Name"
-                    value={recipientName}
-                    onChange={(e) => setRecipientName(e.target.value)}
-                    placeholder="John Smith"
-                  />
+                </details>
                 </div>
+              </section>
 
-                <div className={styles.passwordSection}>
-                  <div className={styles.passwordHeader}>
-                    <label className={styles.passwordLabel}>Password</label>
-                  </div>
-                  <div className={styles.generatedPassword}>
-                    <code className={styles.passwordCode}>
-                      {passwords.length > 0 ? passwords[0].value : ''}
-                    </code>
-                  </div>
-                  <p className={styles.helperText}>
-                    Uses the first generated password above
-                  </p>
-                </div>
-
+              <section className={styles.section}>
+                <h3 className={styles.sectionLabel}>Delivery</h3>
                 <Textarea
                   label="Notes (optional)"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   placeholder="Internal notes about this password (not shared with recipient)"
                   rows={3}
                 />
@@ -330,36 +264,31 @@ export function CreatePasswordPage() {
                   <label className={styles.checkbox}>
                     <input
                       type="checkbox"
-                      checked={sendNotification}
-                      onChange={(e) => setSendNotification(e.target.checked)}
+                      checked={form.sendNotification}
+                      onChange={(e) =>
+                        setForm({ ...form, sendNotification: e.target.checked })
+                      }
                     />
                     <span className={styles.checkboxLabel}>
                       Send email notification to recipient
                     </span>
                   </label>
                 </div>
+              </section>
 
-                {error && <div className={styles.error}>{error}</div>}
+              {error && <div className={styles.error}>{error}</div>}
 
-                <div className={styles.formActions}>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setShowLinkForm(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="lg"
-                    loading={loading}
-                  >
-                    Create Password Link
-                  </Button>
-                </div>
-              </form>
-            )}
+              <div className={styles.formActions}>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  loading={loading}
+                >
+                  Create Password Link
+                </Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
       </div>

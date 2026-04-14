@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../hooks/useAuth';
+import { useDelayedLoading } from '../../hooks/useDelayedLoading';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input, Textarea } from '../common/Input';
@@ -23,6 +24,7 @@ export function WordListsSettings() {
   const { user } = useAuth();
   const [wordLists, setWordLists] = useState<WordListDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const showSkeleton = useDelayedLoading(loading);
   const [saving, setSaving] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -191,9 +193,9 @@ River"
         )}
 
         {/* Word lists */}
-        {loading ? (
+        {showSkeleton ? (
           <SkeletonCard count={3} />
-        ) : wordLists.length === 0 && !showAddForm ? (
+        ) : loading ? null : wordLists.length === 0 && !showAddForm ? (
           <div className={styles.empty}>
             <p>No custom word lists. Using default words for password generation.</p>
           </div>

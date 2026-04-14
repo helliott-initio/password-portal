@@ -15,7 +15,12 @@
   /* Backgrounds - More contrast */
   --color-bg: #f0f4f7;
   --color-bg-subtle: #e8eef2;
+  --color-pale-bg: #f6f9fb;
   --color-white: #FFFFFF;
+
+  /* Skeleton shimmer palette — needs enough contrast to actually shimmer */
+  --color-skeleton-base: #e3e9ef;
+  --color-skeleton-highlight: #f4f7fa;
 
   /* Status - Vibrant */
   --color-success: #10b981;
@@ -63,10 +68,23 @@
   box-sizing: border-box;
 }
 
-html {
+html, body {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 body {
@@ -78,9 +96,10 @@ body {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* Custom scrollbar */
@@ -139,6 +158,38 @@ input, textarea, select {
 ::selection {
   background: var(--color-aqua);
   color: var(--color-deep-blue);
+}
+
+/* Shared Animations */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideOutRight {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* Responsive */

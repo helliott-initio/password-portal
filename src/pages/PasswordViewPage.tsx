@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../services/firebase';
@@ -18,34 +18,44 @@ export function PasswordViewPage() {
   const [recipientName, setRecipientName] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    checkPasswordLink();
-  }, [id]);
-
-  const checkPasswordLink = async () => {
-    if (!id) {
-      setState('error');
-      setError('Invalid link');
-      return;
-    }
-
-    try {
-      const checkLink = httpsCallable(functions, 'checkPasswordLink');
-      const response = await checkLink({ id });
-      const data = response.data as { valid: boolean; recipientName?: string };
-
-      if (data.valid) {
-        setRecipientName(data.recipientName || '');
-        setState('ready');
-      } else {
+    let cancelled = false;
+    const run = async () => {
+      if (!id) {
+        setState('error');
+        setError('Invalid link');
+        return;
+      }
+      try {
+        const checkLink = httpsCallable(functions, 'checkPasswordLink');
+        const response = await checkLink({ id });
+        if (cancelled) return;
+        const data = response.data as { valid: boolean; recipientName?: string };
+        if (data.valid) {
+          setRecipientName(data.recipientName || '');
+          setState('ready');
+        } else {
+          setState('expired');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Error checking password link:', err);
         setState('expired');
       }
-    } catch (err) {
-      console.error('Error checking password link:', err);
-      setState('expired');
-    }
-  };
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
   const handleRevealPassword = async () => {
     setState('loading');
@@ -65,9 +75,14 @@ export function PasswordViewPage() {
   };
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(password);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Clipboard write failed:', err);
+    }
   };
 
   return (

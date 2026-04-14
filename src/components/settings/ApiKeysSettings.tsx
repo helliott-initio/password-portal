@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../services/firebase';
+import { useDelayedLoading } from '../../hooks/useDelayedLoading';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
@@ -26,6 +27,7 @@ interface NewApiKey {
 export function ApiKeysSettings() {
   const [apiKeys, setApiKeys] = useState<ApiKeyDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const showSkeleton = useDelayedLoading(loading);
   const [creating, setCreating] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -233,9 +235,9 @@ X-API-Key: your-api-key-here`}
         </div>
 
         {/* Keys list */}
-        {loading ? (
+        {showSkeleton ? (
           <SkeletonTable rows={3} columns={[{ flex: 2 }, { width: '120px' }, { width: '100px' }, { width: '100px' }, { width: '80px' }, { width: '100px' }]} />
-        ) : apiKeys.length === 0 ? (
+        ) : loading ? null : apiKeys.length === 0 ? (
           <div className={styles.empty}>
             <p>No API keys created yet</p>
           </div>

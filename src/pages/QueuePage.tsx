@@ -1,193 +1,357 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   collection,
   query,
   where,
   orderBy,
   getDocs,
+  getCountFromServer,
   doc,
   updateDoc,
   deleteDoc,
   limit,
-  startAfter,
-  endBefore,
-  limitToLast,
-  QueryDocumentSnapshot,
-  type DocumentData,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../services/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/common/Toast';
+import { useDelayedLoading } from '../hooks/useDelayedLoading';
+import { normalizeSearchQuery } from '../utils/searchTokens';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/common/Button';
-import { generatePassword } from '../utils/passwordGenerator';
 import type { PasswordDoc } from '../types';
 import styles from './QueuePage.module.css';
 
 type FilterStatus = 'all' | 'pending' | 'sent' | 'viewed' | 'expired' | 'revoked';
 
-interface BatchRow {
-  email: string;
-  name: string;
-  password: string;
-  notes: string;
-  valid: boolean;
-  error?: string;
-}
+// Cap for the baseline "most recent" query that powers the stat counters and
+// the default view. When the user searches, we issue a separate array-contains
+// query that is NOT subject to this cap — it's bounded by SEARCH_CAP instead.
+const RESULTS_CAP = 500;
+const SEARCH_CAP = 500;
 
-interface UploadResult {
-  email: string;
-  success: boolean;
-  link?: string;
-  error?: string;
+// Floating info popover that explains how search works. Hover OR keyboard
+// focus opens it; click-outside and Escape close it. Using framer-motion for
+// a subtle scale+fade entry and a matching exit.
+function SearchHelp() {
+  const [open, setOpen] = useState(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const openNow = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    setOpen(true);
+  };
+  const closeSoon = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => setOpen(false), 120);
+  };
+
+  return (
+    <div
+      className={styles.searchHelp}
+      onMouseEnter={openNow}
+      onMouseLeave={closeSoon}
+    >
+      <button
+        type="button"
+        className={styles.searchHelpButton}
+        aria-label="How does search work?"
+        aria-expanded={open}
+        onFocus={openNow}
+        onBlur={closeSoon}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="tooltip"
+            className={styles.searchHelpPopover}
+            initial={{ opacity: 0, y: -4, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.96 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className={styles.searchHelpArrow} />
+            <h4>How this actually works</h4>
+            <p>
+              Type something. We find things that <strong>start with</strong>{' '}
+              what you typed. Not inside — only the start. Firestore is very
+              insistent on this.
+            </p>
+            <ul>
+              <li>
+                <code>john</code> → finds <code>john.doe@example.com</code> and{' '}
+                <code>John Smith</code>
+              </li>
+              <li>
+                <code>example</code> → finds everyone at{' '}
+                <code>@example.com</code>
+              </li>
+              <li>
+                <code>smith</code> → finds <code>Jane Smith</code>
+              </li>
+            </ul>
+            <p className={styles.searchHelpLimit}>
+              <strong>Why can't I search inside a word?</strong> Because
+              Firestore is a database, not Google. It checks the start of words
+              and calls it a day. Typing <code>elliott</code> won't find{' '}
+              <code>helliott</code> — as far as Firestore is concerned, those
+              are completely different planets. Real search (the kind that
+              finds things in the middle of words) needs a whole separate
+              service like Algolia or Typesense: more money, more servers, more
+              things that can break at 2am. You'll survive.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 export function QueuePage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [passwords, setPasswords] = useState<PasswordDoc[]>([]);
+  const navigate = useNavigate();
+  const [allPasswords, setAllPasswords] = useState<PasswordDoc[]>([]);
+  const [searchResults, setSearchResults] = useState<PasswordDoc[] | null>(null);
+  const [statCounts, setStatCounts] = useState({
+    total: 0,
+    pending: 0,
+    sent: 0,
+    viewed: 0,
+    expired: 0,
+    revoked: 0,
+  });
   const [loading, setLoading] = useState(true);
+  const showSkeleton = useDelayedLoading(loading);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [searchEmail, setSearchEmail] = useState('');
+  const [debouncedSearchEmail, setDebouncedSearchEmail] = useState('');
+  // Searching state: true whenever the raw input is ahead of the applied value,
+  // OR while the server-side search query is in flight. Wrapped in
+  // useDelayedLoading with a 500ms minimum so even an instant search still
+  // feels deliberate rather than flashing on for a frame.
+  const [searchFetching, setSearchFetching] = useState(false);
+  const isSearching = searchEmail !== debouncedSearchEmail || searchFetching;
+  const showSearching = useDelayedLoading(isSearching, {
+    delayMs: 80,
+    minDurationMs: 500,
+  });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const loadSeqRef = useRef(0);
+  const searchSeqRef = useRef(0);
 
-  // Pagination state
+  // Client-side pagination state
   const [pageSize, setPageSize] = useState(25);
-  const [firstDoc, setFirstDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const [pageStack, setPageStack] = useState<QueryDocumentSnapshot<DocumentData>[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-
-  // Batch upload state
-  const [batchOpen, setBatchOpen] = useState(false);
-  const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
-  const [batchStep, setBatchStep] = useState<'upload' | 'preview' | 'results'>('upload');
-  const [batchUploading, setBatchUploading] = useState(false);
-  const [batchResults, setBatchResults] = useState<UploadResult[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pageIndex, setPageIndex] = useState(0);
 
   // Delete confirmation state (click-twice pattern)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Reset pagination when filter changes
-    setPageStack([]);
-    loadPasswords('initial');
-  }, [filterStatus]);
+    return () => {
+      if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current);
+    };
+  }, []);
 
+  // Debounce searchEmail -> debouncedSearchEmail. Only the search value is
+  // debounced; the load effect itself fires immediately on mount.
   useEffect(() => {
-    // Reset pagination when search changes
-    if (searchEmail) {
-      setPageStack([]);
-      loadPasswords('initial');
+    if (searchEmail === debouncedSearchEmail) return;
+    const timer = setTimeout(() => setDebouncedSearchEmail(searchEmail), 300);
+    return () => clearTimeout(timer);
+  }, [searchEmail, debouncedSearchEmail]);
+
+  // Baseline fetch: the most recent RESULTS_CAP records across all statuses.
+  // This is the default view when search is empty. Stat counters are computed
+  // separately via count() aggregation queries so they reflect the whole
+  // collection, not just the baseline 500. loadSeqRef guards against
+  // StrictMode's duplicate-effect so only the latest fetch's result ever
+  // reaches setState.
+  useEffect(() => {
+    loadPasswords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Server-side search effect. When the normalized search query is >= 2 chars,
+  // issue a Firestore `array-contains` query on the `searchTokens` field. This
+  // is NOT bounded by the 500-record baseline cap — it finds matches anywhere
+  // in the collection, which is the whole point of moving search server-side.
+  useEffect(() => {
+    const normalized = normalizeSearchQuery(debouncedSearchEmail);
+    if (!normalized) {
+      setSearchResults(null);
+      setSearchFetching(false);
+      return;
     }
-  }, [searchEmail]);
 
+    let cancelled = false;
+    const mySeq = ++searchSeqRef.current;
+    setSearchFetching(true);
+
+    (async () => {
+      try {
+        const passwordsRef = collection(db, 'passwords');
+        const q = query(
+          passwordsRef,
+          where('searchTokens', 'array-contains', normalized.serverToken),
+          orderBy('createdAt', 'desc'),
+          limit(SEARCH_CAP)
+        );
+        const snapshot = await getDocs(q);
+        if (cancelled || searchSeqRef.current !== mySeq) return;
+        let results = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as PasswordDoc[];
+
+        // Client-side refine when the raw query has more than one word or
+        // contains punctuation, e.g. "gmail.com" -> serverToken "gmail" +
+        // client filter for the full "gmail.com" substring.
+        if (normalized.needsClientRefine) {
+          const filter = normalized.clientFilter;
+          results = results.filter(
+            (p) =>
+              p.recipientEmail.toLowerCase().includes(filter) ||
+              (p.recipientName?.toLowerCase().includes(filter) ?? false)
+          );
+        }
+
+        setSearchResults(results);
+      } catch (err) {
+        if (cancelled || searchSeqRef.current !== mySeq) return;
+        console.error('Search query failed:', err);
+        showToast('Search failed — showing local results', 'error');
+        // Fall back to client-side filtering over the baseline load.
+        setSearchResults(null);
+      } finally {
+        if (!cancelled && searchSeqRef.current === mySeq) {
+          setSearchFetching(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchEmail]);
+
+  // Reset pagination when the filtered view changes.
   useEffect(() => {
-    // Reset pagination when page size changes
-    setPageStack([]);
-    loadPasswords('initial');
-  }, [pageSize]);
+    setPageIndex(0);
+  }, [filterStatus, debouncedSearchEmail, pageSize]);
 
-  const loadPasswords = async (direction: 'initial' | 'next' | 'prev' = 'initial') => {
+  const loadPasswords = async () => {
+    const mySeq = ++loadSeqRef.current;
     setLoading(true);
+    // Kick off the count refresh in parallel — it's cheap and must stay in
+    // sync with any mutation that triggers loadPasswords.
+    loadStatCounts();
     try {
       const passwordsRef = collection(db, 'passwords');
-      let q;
-
-      // Base query with ordering
-      if (filterStatus !== 'all') {
-        q = query(
-          passwordsRef,
-          where('status', '==', filterStatus),
-          orderBy('createdAt', 'desc')
-        );
-      } else {
-        q = query(passwordsRef, orderBy('createdAt', 'desc'));
-      }
-
-      // Apply pagination cursors
-      if (direction === 'next' && lastDoc) {
-        q = query(q, startAfter(lastDoc), limit(pageSize + 1));
-      } else if (direction === 'prev' && firstDoc) {
-        q = query(q, endBefore(firstDoc), limitToLast(pageSize + 1));
-      } else {
-        // Initial load
-        q = query(q, limit(pageSize + 1));
-      }
+      const q = query(
+        passwordsRef,
+        orderBy('createdAt', 'desc'),
+        limit(RESULTS_CAP)
+      );
 
       const snapshot = await getDocs(q);
-      let results = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      if (loadSeqRef.current !== mySeq) return;
+
+      const results = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
       })) as PasswordDoc[];
 
-      // Check if there are more results
-      const hasMoreResults = results.length > pageSize;
-      setHasMore(hasMoreResults);
-
-      // Trim to page size
-      if (hasMoreResults) {
-        results = results.slice(0, pageSize);
-      }
-
-      // Apply search filter client-side (since Firestore doesn't support full-text search)
-      if (searchEmail) {
-        const search = searchEmail.toLowerCase();
-        results = results.filter(
-          (p) =>
-            p.recipientEmail.toLowerCase().includes(search) ||
-            p.recipientName?.toLowerCase().includes(search)
-        );
-      }
-
-      // Store cursor documents
-      if (snapshot.docs.length > 0) {
-        setFirstDoc(snapshot.docs[0]);
-        const lastIndex = Math.min(pageSize - 1, snapshot.docs.length - 1);
-        setLastDoc(snapshot.docs[lastIndex]);
-      }
-
-      setPasswords(results);
+      setAllPasswords(results);
     } catch (error) {
+      if (loadSeqRef.current !== mySeq) return;
       console.error('Error loading passwords:', error);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === mySeq) setLoading(false);
     }
   };
 
-  const handleNextPage = () => {
-    if (firstDoc) {
-      setPageStack([...pageStack, firstDoc]);
+  // True collection-wide counts via Firestore count() aggregation. Each count
+  // is charged at ~1/1000 of a doc read, so six parallel counts is effectively
+  // free. Called on mount and after any mutation (send/revoke/delete/bulk).
+  const loadStatCounts = async () => {
+    try {
+      const passwordsRef = collection(db, 'passwords');
+      const statuses = ['pending', 'sent', 'viewed', 'expired', 'revoked'] as const;
+      const [totalSnap, ...statusSnaps] = await Promise.all([
+        getCountFromServer(query(passwordsRef)),
+        ...statuses.map((s) =>
+          getCountFromServer(query(passwordsRef, where('status', '==', s)))
+        ),
+      ]);
+      setStatCounts({
+        total: totalSnap.data().count,
+        pending: statusSnaps[0].data().count,
+        sent: statusSnaps[1].data().count,
+        viewed: statusSnaps[2].data().count,
+        expired: statusSnaps[3].data().count,
+        revoked: statusSnaps[4].data().count,
+      });
+    } catch (error) {
+      console.error('Error loading stat counts:', error);
     }
-    loadPasswords('next');
+  };
+
+  // The source list depends on whether we have server search results. When
+  // searching, `searchResults` IS the result set (no additional text filtering
+  // needed — Firestore already matched). Status filter still applies locally.
+  const filteredPasswords = useMemo(() => {
+    const source = searchResults ?? allPasswords;
+    if (filterStatus === 'all') return source;
+    return source.filter((p) => p.status === filterStatus);
+  }, [searchResults, allPasswords, filterStatus]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPasswords.length / pageSize));
+  const safePageIndex = Math.min(pageIndex, totalPages - 1);
+  const passwords = useMemo(
+    () =>
+      filteredPasswords.slice(
+        safePageIndex * pageSize,
+        (safePageIndex + 1) * pageSize
+      ),
+    [filteredPasswords, safePageIndex, pageSize]
+  );
+  const hasMore = safePageIndex < totalPages - 1;
+  const hasPrev = safePageIndex > 0;
+
+  const handleNextPage = () => {
+    if (hasMore) setPageIndex((i) => i + 1);
   };
 
   const handlePrevPage = () => {
-    const newStack = [...pageStack];
-    const prevDoc = newStack.pop();
-    setPageStack(newStack);
-
-    if (prevDoc) {
-      setFirstDoc(prevDoc);
-      loadPasswords('prev');
-    } else {
-      loadPasswords('initial');
-    }
+    if (hasPrev) setPageIndex((i) => Math.max(0, i - 1));
   };
 
-  // Stats
-  const stats = {
-    total: passwords.length,
-    pending: passwords.filter((p) => p.status === 'pending').length,
-    sent: passwords.filter((p) => p.status === 'sent').length,
-    viewed: passwords.filter((p) => p.status === 'viewed').length,
-    expired: passwords.filter((p) => p.status === 'expired').length,
-    revoked: passwords.filter((p) => p.status === 'revoked').length,
-  };
+  // Stats reflect the entire collection (see loadStatCounts), not just the
+  // 500-record baseline load.
+  const stats = statCounts;
 
   const handleSelectAll = () => {
     if (selectedIds.size === passwords.length) {
@@ -332,134 +496,6 @@ export function QueuePage() {
     return '';
   };
 
-  // Batch upload handlers
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      parseCSV(text);
-    };
-    reader.readAsText(file);
-  };
-
-  const parseCSV = (text: string) => {
-    const lines = text.split('\n').filter((line) => line.trim());
-    const parsedRows: BatchRow[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
-      const [email, name, password, notes] = values;
-
-      const row: BatchRow = {
-        email: email || '',
-        name: name || '',
-        password: password || generatePassword(),
-        notes: notes || '',
-        valid: true,
-      };
-
-      if (!row.email || !row.email.includes('@')) {
-        row.valid = false;
-        row.error = 'Invalid email';
-      }
-
-      parsedRows.push(row);
-    }
-
-    setBatchRows(parsedRows);
-    setBatchStep('preview');
-  };
-
-  const handleBatchUpload = async () => {
-    const validRows = batchRows.filter((r) => r.valid);
-    if (validRows.length === 0) return;
-
-    setBatchUploading(true);
-    const uploadResults: UploadResult[] = [];
-
-    try {
-      const createPasswordLink = httpsCallable(functions, 'createPasswordLink');
-
-      for (const row of validRows) {
-        try {
-          const response = await createPasswordLink({
-            recipientEmail: row.email,
-            recipientName: row.name,
-            password: row.password,
-            notes: row.notes,
-            sendNotification: false,
-          });
-
-          const data = response.data as { link: string };
-          uploadResults.push({
-            email: row.email,
-            success: true,
-            link: data.link,
-          });
-        } catch {
-          uploadResults.push({
-            email: row.email,
-            success: false,
-            error: 'Failed to create link',
-          });
-        }
-      }
-
-      setBatchResults(uploadResults);
-      setBatchStep('results');
-      await loadPasswords();
-      showToast(`Created ${uploadResults.filter(r => r.success).length} password links`, 'success');
-    } catch (error) {
-      console.error('Batch upload error:', error);
-      showToast('Batch upload failed', 'error');
-    } finally {
-      setBatchUploading(false);
-    }
-  };
-
-  const handleDownloadTemplate = () => {
-    const template = 'email,name,password,notes\nuser@example.com,John Smith,,Optional notes\n';
-    const blob = new Blob([template], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'password-batch-template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadResults = () => {
-    const csv = [
-      'email,success,link,error',
-      ...batchResults.map(
-        (r) => `${r.email},${r.success},${r.link || ''},${r.error || ''}`
-      ),
-    ].join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'password-batch-results.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const closeBatchPanel = () => {
-    setBatchOpen(false);
-    setBatchRows([]);
-    setBatchResults([]);
-    setBatchStep('upload');
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const validBatchCount = batchRows.filter((r) => r.valid).length;
-
   return (
     <Layout>
       <div className={styles.page}>
@@ -470,15 +506,7 @@ export function QueuePage() {
             <span className={styles.subtitle}>{stats.total} total links</span>
           </div>
           <div className={styles.headerActions}>
-            <Button variant="secondary" onClick={() => setBatchOpen(true)}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17,8 12,3 7,8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              Batch Upload
-            </Button>
-            <Button variant="primary" onClick={() => (window.location.href = '/admin/create')}>
+            <Button variant="primary" onClick={() => navigate('/admin/create')}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
@@ -531,25 +559,80 @@ export function QueuePage() {
         {/* Search & Bulk Actions */}
         <div className={styles.toolbar}>
           <div className={styles.searchBox}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+            <div className={styles.searchIcon} aria-hidden="true">
+              <AnimatePresence mode="wait" initial={false}>
+                {showSearching ? (
+                  <motion.svg
+                    key="spin"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.25"
+                    strokeLinecap="round"
+                    initial={{ opacity: 0, scale: 0.7 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 360 }}
+                    exit={{ opacity: 0, scale: 0.7 }}
+                    transition={{
+                      opacity: { duration: 0.15 },
+                      scale: { duration: 0.15 },
+                      rotate: { duration: 0.9, repeat: Infinity, ease: 'linear' },
+                    }}
+                  >
+                    <path d="M21 12a9 9 0 1 1-6.2-8.55" />
+                  </motion.svg>
+                ) : (
+                  <motion.svg
+                    key="search"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    initial={{ opacity: 0, scale: 0.7 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.7 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </motion.svg>
+                )}
+              </AnimatePresence>
+            </div>
             <input
-              type="text"
-              placeholder="Search by email or name..."
+              type="search"
+              placeholder="Start of a name or email…"
               value={searchEmail}
               onChange={(e) => setSearchEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && loadPasswords()}
+              name="queue-search"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-bwignore="true"
+              data-form-type="other"
+              aria-label="Search queue"
+              aria-describedby="queue-search-hint"
+              aria-busy={showSearching}
             />
+            <span id="queue-search-hint" className={styles.srOnly}>
+              Matches the start of any word in the recipient email or name. For
+              example, "john" finds "john.doe@example.com" and "John Smith".
+            </span>
             {searchEmail && (
-              <button className={styles.clearSearch} onClick={() => { setSearchEmail(''); loadPasswords(); }}>
+              <button className={styles.clearSearch} onClick={() => setSearchEmail('')}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
             )}
+            <SearchHelp />
           </div>
 
           <div className={styles.toolbarRight}>
@@ -569,7 +652,7 @@ export function QueuePage() {
                 </button>
               </div>
             )}
-            <button className={styles.refreshBtn} onClick={() => loadPasswords('initial')} title="Refresh">
+            <button className={styles.refreshBtn} onClick={() => loadPasswords()} title="Refresh">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="23,4 23,10 17,10" />
                 <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
@@ -579,8 +662,16 @@ export function QueuePage() {
         </div>
 
         {/* Table */}
-        <div className={styles.tableContainer}>
-          {loading ? (
+        <motion.div
+          className={styles.tableContainer}
+          animate={{
+            opacity: showSearching ? 0.55 : 1,
+            filter: showSearching ? 'saturate(0.7)' : 'saturate(1)',
+          }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          style={{ pointerEvents: showSearching ? 'none' : 'auto' }}
+        >
+          {showSkeleton ? (
             <div className={styles.skeletonTable}>
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className={styles.skeletonRow}>
@@ -592,28 +683,54 @@ export function QueuePage() {
                 </div>
               ))}
             </div>
-          ) : passwords.length === 0 ? (
+          ) : loading ? null : passwords.length === 0 ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
+                {debouncedSearchEmail ? (
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                ) : (
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                )}
               </div>
-              <h3>No password links found</h3>
-              <p>
-                {filterStatus !== 'all'
-                  ? `No ${filterStatus} links. Try a different filter.`
-                  : 'Create your first password link or upload a batch.'}
-              </p>
-              <div className={styles.emptyActions}>
-                <Button variant="primary" onClick={() => (window.location.href = '/admin/create')}>
-                  Create Link
-                </Button>
-                <Button variant="secondary" onClick={() => setBatchOpen(true)}>
-                  Batch Upload
-                </Button>
-              </div>
+              {debouncedSearchEmail ? (
+                <>
+                  <h3>No matches for "{debouncedSearchEmail}"</h3>
+                  <p className={styles.emptySearchHelp}>
+                    Search matches the <strong>start</strong> of any word in the
+                    recipient name or email. Try typing just the first few
+                    letters — e.g. <code>john</code>, <code>smith</code>, or{' '}
+                    <code>company</code>.
+                  </p>
+                  <div className={styles.emptyActions}>
+                    <Button variant="ghost" onClick={() => setSearchEmail('')}>
+                      Clear search
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3>No password links found</h3>
+                  <p>
+                    {filterStatus !== 'all'
+                      ? `No ${filterStatus} links. Try a different filter.`
+                      : 'Create your first password link or upload a batch.'}
+                  </p>
+                  <div className={styles.emptyActions}>
+                    <Button variant="primary" onClick={() => navigate('/admin/create')}>
+                      Create Link
+                    </Button>
+                    <Button variant="secondary" onClick={() => navigate('/admin/batch')}>
+                      Batch Upload
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <table className={styles.table}>
@@ -730,7 +847,7 @@ export function QueuePage() {
               </tbody>
             </table>
           )}
-        </div>
+        </motion.div>
 
         {/* Pagination Controls */}
         {!loading && passwords.length > 0 && (
@@ -754,7 +871,7 @@ export function QueuePage() {
                 variant="ghost"
                 size="sm"
                 onClick={handlePrevPage}
-                disabled={pageStack.length === 0}
+                disabled={!hasPrev}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="15,18 9,12 15,6" />
@@ -762,7 +879,7 @@ export function QueuePage() {
                 Previous
               </Button>
               <span className={styles.pageInfo}>
-                Page {pageStack.length + 1} {hasMore ? '' : '(last)'}
+                Page {safePageIndex + 1} of {totalPages}
               </span>
               <Button
                 variant="ghost"
@@ -778,168 +895,13 @@ export function QueuePage() {
             </div>
             <div className={styles.paginationRight}>
               <span className={styles.itemCount}>
-                {passwords.length} {passwords.length === 1 ? 'item' : 'items'}
+                {filteredPasswords.length} {filteredPasswords.length === 1 ? 'result' : 'results'}
               </span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Batch Upload Panel */}
-      {batchOpen && (
-        <>
-          <div className={styles.overlay} onClick={closeBatchPanel} />
-          <div className={styles.batchPanel}>
-            <header className={styles.batchHeader}>
-              <h2>Batch Upload</h2>
-              <button className={styles.closeBtn} onClick={closeBatchPanel}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </header>
-
-            <div className={styles.batchContent}>
-              {batchStep === 'upload' && (
-                <div className={styles.uploadStep}>
-                  <div
-                    className={styles.dropZone}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17,8 12,3 7,8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <p>Drop CSV file here or click to browse</p>
-                    <span>Supports .csv files</span>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv"
-                      onChange={handleFileSelect}
-                      hidden
-                    />
-                  </div>
-
-                  <button className={styles.templateBtn} onClick={handleDownloadTemplate}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7,10 12,15 17,10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    Download CSV Template
-                  </button>
-
-                  <div className={styles.formatHelp}>
-                    <h4>CSV Format</h4>
-                    <p>Required columns:</p>
-                    <code>email, name, password, notes</code>
-                    <p className={styles.helpNote}>Leave password blank to auto-generate friendly passwords</p>
-                  </div>
-                </div>
-              )}
-
-              {batchStep === 'preview' && (
-                <div className={styles.previewStep}>
-                  <div className={styles.previewStats}>
-                    <div className={styles.previewStat}>
-                      <span className={styles.previewStatValue}>{batchRows.length}</span>
-                      <span>Total</span>
-                    </div>
-                    <div className={`${styles.previewStat} ${styles.valid}`}>
-                      <span className={styles.previewStatValue}>{validBatchCount}</span>
-                      <span>Valid</span>
-                    </div>
-                    <div className={`${styles.previewStat} ${styles.invalid}`}>
-                      <span className={styles.previewStatValue}>{batchRows.length - validBatchCount}</span>
-                      <span>Invalid</span>
-                    </div>
-                  </div>
-
-                  <div className={styles.previewTable}>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Email</th>
-                          <th>Name</th>
-                          <th>Password</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {batchRows.slice(0, 10).map((row, i) => (
-                          <tr key={i} className={!row.valid ? styles.invalidRow : ''}>
-                            <td>{row.email}</td>
-                            <td>{row.name || '-'}</td>
-                            <td><code>{row.password}</code></td>
-                            <td>
-                              {row.valid ? (
-                                <span className={styles.validBadge}>Ready</span>
-                              ) : (
-                                <span className={styles.invalidBadge}>{row.error}</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {batchRows.length > 10 && (
-                      <p className={styles.moreRows}>+ {batchRows.length - 10} more rows</p>
-                    )}
-                  </div>
-
-                  <div className={styles.previewActions}>
-                    <Button variant="ghost" onClick={() => { setBatchStep('upload'); setBatchRows([]); }}>
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="primary"
-                      onClick={handleBatchUpload}
-                      loading={batchUploading}
-                      disabled={validBatchCount === 0}
-                    >
-                      Create {validBatchCount} Links
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {batchStep === 'results' && (
-                <div className={styles.resultsStep}>
-                  <div className={styles.resultsIcon}>
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                      <polyline points="22,4 12,14.01 9,11.01" />
-                    </svg>
-                  </div>
-                  <h3>{batchResults.filter(r => r.success).length} links created</h3>
-                  {batchResults.some(r => !r.success) && (
-                    <p className={styles.failedNote}>
-                      {batchResults.filter(r => !r.success).length} failed
-                    </p>
-                  )}
-
-                  <div className={styles.resultsActions}>
-                    <Button variant="secondary" onClick={handleDownloadResults}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7,10 12,15 17,10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                      </svg>
-                      Download Results
-                    </Button>
-                    <Button variant="primary" onClick={closeBatchPanel}>
-                      Done
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
     </Layout>
   );
 }

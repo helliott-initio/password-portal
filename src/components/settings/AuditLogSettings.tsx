@@ -14,6 +14,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { useDelayedLoading } from '../../hooks/useDelayedLoading';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { SkeletonTable } from '../common/LoadingSkeleton';
@@ -25,8 +26,9 @@ type FilterAction = 'all' | 'create' | 'view' | 'send_email' | 'revoke' | 'api_c
 export function AuditLogSettings() {
   const [logs, setLogs] = useState<AuditLogDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const showSkeleton = useDelayedLoading(loading);
   const [filterAction, setFilterAction] = useState<FilterAction>('all');
-  const [pageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(50);
 
   // Pagination state
   const [firstDoc, setFirstDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
@@ -39,6 +41,12 @@ export function AuditLogSettings() {
     setPageStack([]);
     loadLogs('initial');
   }, [filterAction]);
+
+  useEffect(() => {
+    // Reset pagination when page size changes
+    setPageStack([]);
+    loadLogs('initial');
+  }, [pageSize]);
 
   const loadLogs = async (direction: 'initial' | 'next' | 'prev' = 'initial') => {
     setLoading(true);
@@ -211,9 +219,9 @@ export function AuditLogSettings() {
         </div>
 
         {/* Logs list */}
-        {loading ? (
+        {showSkeleton ? (
           <SkeletonTable rows={10} columns={[{ width: '140px' }, { width: '100px' }, { flex: 1 }, { width: '80px' }, { width: '100px' }, { flex: 2 }]} />
-        ) : logs.length === 0 ? (
+        ) : loading ? null : logs.length === 0 ? (
           <div className={styles.empty}>
             <p>No audit logs found</p>
           </div>
@@ -263,25 +271,42 @@ export function AuditLogSettings() {
         {/* Pagination controls */}
         {!loading && logs.length > 0 && (
           <div className={styles.pagination}>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handlePrevPage}
-              disabled={pageStack.length === 0}
-            >
-              Previous
-            </Button>
+            <div className={styles.paginationLeft}>
+              <label className={styles.pageSizeLabel}>Show:</label>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className={styles.filterSelect}
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            <div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handlePrevPage}
+                disabled={pageStack.length === 0}
+              >
+                Previous
+              </Button>
+              <span className={styles.pageInfo}>
+                Page {pageStack.length + 1} {hasMore ? '' : '(last)'}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNextPage}
+                disabled={!hasMore}
+              >
+                Next
+              </Button>
+            </div>
             <span className={styles.pageInfo}>
-              Page {pageStack.length + 1}
+              {logs.length} {logs.length === 1 ? 'entry' : 'entries'}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleNextPage}
-              disabled={!hasMore}
-            >
-              Next
-            </Button>
           </div>
         )}
       </CardContent>

@@ -16,30 +16,61 @@ import type { UserDoc, AuthContextType } from '../types';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// Dev-only auth bypass. Gated by BOTH import.meta.env.DEV (stripped in prod builds)
+// AND an explicit env var, so a prod bundle can never accidentally ship a bypass.
+const DEV_SKIP_AUTH =
+  import.meta.env.DEV && import.meta.env.VITE_DEV_SKIP_AUTH === 'true';
+
+const DEV_FAKE_USER: UserDoc = {
+  id: 'dev-admin',
+  email: 'dev@localhost',
+  displayName: 'Dev Admin',
+  photoURL: '',
+  role: 'admin',
+  createdAt: new Date(),
+  lastLogin: new Date(),
+} as UserDoc;
+
 interface AuthProviderProps {
   children: ReactNode;
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<UserDoc | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<UserDoc | null>(DEV_SKIP_AUTH ? DEV_FAKE_USER : null);
+  const [loading, setLoading] = useState(!DEV_SKIP_AUTH);
 
   useEffect(() => {
+    if (DEV_SKIP_AUTH) {
+      // eslint-disable-next-line no-console
+      console.warn('[useAuth] VITE_DEV_SKIP_AUTH is enabled — signed in as fake admin.');
+      return;
+    }
+
+    let cancelled = false;
     const unsubscribe = onAuthChange(async (firebaseUser: User | null) => {
       if (firebaseUser) {
         // Get the full user doc from Firestore
         const userDoc = await getCurrentUserDoc();
+        if (cancelled) return;
         setUser(userDoc);
       } else {
+        if (cancelled) return;
         setUser(null);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   const signIn = async () => {
+    if (DEV_SKIP_AUTH) {
+      setUser(DEV_FAKE_USER);
+      return;
+    }
     setLoading(true);
     try {
       const userDoc = await signInWithGoogle();
@@ -50,6 +81,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const signOut = async () => {
+    if (DEV_SKIP_AUTH) {
+      setUser(null);
+      return;
+    }
     await authSignOut();
     setUser(null);
   };

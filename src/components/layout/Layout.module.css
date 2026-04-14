@@ -1,32 +1,31 @@
 .layout {
-  min-height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .main {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* .main is our actual scroll container (html/body/#root are overflow:hidden).
+     scrollbar-gutter: stable reserves space for the scrollbar so pages that
+     briefly don't need scrolling don't cause the centered content to shift. */
+  scrollbar-gutter: stable;
+}
+
+.mainInner {
   padding: 2rem 1.5rem;
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
 }
 
-.footer {
-  background: var(--color-deep-blue);
-  color: rgba(255, 255, 255, 0.7);
-  padding: 1.5rem;
-  text-align: center;
-  font-size: 0.875rem;
-}
-
-.footer p {
-  margin: 0.25rem 0;
-}
-
-.footer p:first-child {
-  color: var(--color-white);
-  font-weight: 500;
+.pageWrap {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Responsive */

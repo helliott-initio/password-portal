@@ -29,11 +29,18 @@ export interface GeneratorOptions {
   mode?: PasswordMode;
 }
 
-// Cryptographically secure random number generator
+// Cryptographically secure random integer in [0, max) with rejection sampling
+// to avoid modulo bias.
 function secureRandom(max: number): number {
+  if (max <= 0) return 0;
   const array = new Uint32Array(1);
-  crypto.getRandomValues(array);
-  return array[0] % max;
+  const limit = Math.floor(0x100000000 / max) * max;
+  let value: number;
+  do {
+    crypto.getRandomValues(array);
+    value = array[0];
+  } while (value >= limit);
+  return value % max;
 }
 
 // Pick random item from array

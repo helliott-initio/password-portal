@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'framer-motion';
+import { collection, query, where, getDocs, Timestamp, limit, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { useDelayedLoading } from '../hooks/useDelayedLoading';
 import { Layout } from '../components/layout/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -19,67 +21,77 @@ export function DashboardPage() {
   });
   const [recentLinks, setRecentLinks] = useState<PasswordDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const showSkeleton = useDelayedLoading(loading);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadDashboardData = async () => {
+      try {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekStart = new Date(todayStart);
+        weekStart.setDate(weekStart.getDate() - 7);
+
+        const passwordsRef = collection(db, 'passwords');
+
+        // Bound each query so dashboard stays fast even with a large collection.
+        const [todaySnap, pendingSnap, weekSnap] = await Promise.all([
+          getDocs(
+            query(
+              passwordsRef,
+              where('createdAt', '>=', Timestamp.fromDate(todayStart)),
+              limit(500)
+            )
+          ),
+          getDocs(
+            query(
+              passwordsRef,
+              where('status', 'in', ['pending', 'sent']),
+              orderBy('createdAt', 'desc'),
+              limit(50)
+            )
+          ),
+          getDocs(
+            query(
+              passwordsRef,
+              where('createdAt', '>=', Timestamp.fromDate(weekStart)),
+              limit(1000)
+            )
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        let viewedToday = 0;
+        todaySnap.docs.forEach((doc) => {
+          if (doc.data().status === 'viewed') viewedToday++;
+        });
+
+        setStats({
+          todayCount: todaySnap.size,
+          pendingCount: pendingSnap.size,
+          viewedToday,
+          weekCount: weekSnap.size,
+        });
+
+        const recent = pendingSnap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() } as PasswordDoc))
+          .slice(0, 10);
+        setRecentLinks(recent);
+      } catch (error) {
+        if (!cancelled) console.error('Error loading dashboard data:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     loadDashboardData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const weekStart = new Date(todayStart);
-      weekStart.setDate(weekStart.getDate() - 7);
-
-      const passwordsRef = collection(db, 'passwords');
-
-      // Get today's links
-      const todayQuery = query(
-        passwordsRef,
-        where('createdAt', '>=', Timestamp.fromDate(todayStart))
-      );
-      const todaySnap = await getDocs(todayQuery);
-
-      // Get pending links
-      const pendingQuery = query(
-        passwordsRef,
-        where('status', 'in', ['pending', 'sent'])
-      );
-      const pendingSnap = await getDocs(pendingQuery);
-
-      // Get this week's links
-      const weekQuery = query(
-        passwordsRef,
-        where('createdAt', '>=', Timestamp.fromDate(weekStart))
-      );
-      const weekSnap = await getDocs(weekQuery);
-
-      // Count viewed today
-      let viewedToday = 0;
-      todaySnap.docs.forEach((doc) => {
-        if (doc.data().status === 'viewed') {
-          viewedToday++;
-        }
-      });
-
-      setStats({
-        todayCount: todaySnap.size,
-        pendingCount: pendingSnap.size,
-        viewedToday,
-        weekCount: weekSnap.size,
-      });
-
-      // Get recent links for the table
-      const recent = pendingSnap.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() } as PasswordDoc))
-        .slice(0, 10);
-      setRecentLinks(recent);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const formatDate = (date: Date | { toDate: () => Date }) => {
     const d = date instanceof Date ? date : date.toDate();
@@ -118,28 +130,49 @@ export function DashboardPage() {
           </div>
 
           {/* Stats cards */}
-          {loading ? (
-            <SkeletonStats count={4} />
-          ) : (
-            <div className={styles.statsGrid}>
-              <Card className={styles.statCard}>
-                <div className={styles.statValue}>{stats.todayCount}</div>
-                <div className={styles.statLabel}>Created Today</div>
-              </Card>
-              <Card className={styles.statCard}>
-                <div className={styles.statValue}>{stats.pendingCount}</div>
-                <div className={styles.statLabel}>Pending / Sent</div>
-              </Card>
-              <Card className={styles.statCard}>
-                <div className={styles.statValue}>{stats.viewedToday}</div>
-                <div className={styles.statLabel}>Viewed Today</div>
-              </Card>
-              <Card className={styles.statCard}>
-                <div className={styles.statValue}>{stats.weekCount}</div>
-                <div className={styles.statLabel}>This Week</div>
-              </Card>
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {showSkeleton ? (
+              <motion.div
+                key="stats-skel"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <SkeletonStats count={4} />
+              </motion.div>
+            ) : loading ? null : (
+              <motion.div
+                key="stats"
+                className={styles.statsGrid}
+                initial="hidden"
+                animate="show"
+                variants={{
+                  hidden: {},
+                  show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
+                }}
+              >
+                {[
+                  { value: stats.todayCount, label: 'Created Today' },
+                  { value: stats.pendingCount, label: 'Pending / Sent' },
+                  { value: stats.viewedToday, label: 'Viewed Today' },
+                  { value: stats.weekCount, label: 'This Week' },
+                ].map((s) => (
+                  <motion.div
+                    key={s.label}
+                    variants={{
+                      hidden: { opacity: 0, y: 12 },
+                      show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
+                    }}
+                  >
+                    <Card className={styles.statCard}>
+                      <div className={styles.statValue}>{s.value}</div>
+                      <div className={styles.statLabel}>{s.label}</div>
+                    </Card>
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Recent links */}
           <Card>
@@ -157,9 +190,9 @@ export function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {loading ? (
+              {showSkeleton ? (
                 <SkeletonTable rows={5} columns={[{ flex: 2 }, { flex: 1 }, { width: '100px' }, { width: '100px' }]} />
-              ) : recentLinks.length === 0 ? (
+              ) : loading ? null : recentLinks.length === 0 ? (
                 <div className={styles.empty}>
                   <p>No pending password links</p>
                   <Link to="/admin/create">

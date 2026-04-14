@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../hooks/useAuth';
+import { useDelayedLoading } from '../../hooks/useDelayedLoading';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
@@ -22,6 +23,7 @@ export function IpWhitelistSettings() {
   const { user } = useAuth();
   const [ips, setIps] = useState<IpWhitelistDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const showSkeleton = useDelayedLoading(loading);
   const [adding, setAdding] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newIp, setNewIp] = useState('');
@@ -151,9 +153,9 @@ export function IpWhitelistSettings() {
         </div>
 
         {/* IPs list */}
-        {loading ? (
+        {showSkeleton ? (
           <SkeletonTable rows={5} columns={[{ width: '150px' }, { flex: 2 }, { flex: 1 }, { width: '100px' }, { width: '100px' }]} />
-        ) : ips.length === 0 ? (
+        ) : loading ? null : ips.length === 0 ? (
           <div className={styles.empty}>
             <p>No IPs whitelisted. API is currently open to all IPs.</p>
           </div>

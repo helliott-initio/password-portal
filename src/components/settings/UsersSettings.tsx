@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../hooks/useAuth';
+import { useDelayedLoading } from '../../hooks/useDelayedLoading';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
@@ -23,6 +24,7 @@ export function UsersSettings() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const showSkeleton = useDelayedLoading(loading);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'technician'>('technician');
@@ -196,9 +198,9 @@ export function UsersSettings() {
         )}
 
         {/* Users list */}
-        {loading ? (
+        {showSkeleton ? (
           <SkeletonTable rows={5} columns={[{ flex: 1 }, { flex: 2 }, { width: '100px' }, { width: '80px' }, { width: '150px' }]} />
-        ) : users.length === 0 ? (
+        ) : loading ? null : users.length === 0 ? (
           <div className={styles.empty}>
             <p>No users yet. Add your first user above.</p>
           </div>

@@ -469,8 +469,19 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--color-text-secondary);
-  min-width: 120px;
+  min-width: 80px;
   text-align: center;
+}
+
+.paginationLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pageSizeLabel {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
 }
 
 /* Responsive */

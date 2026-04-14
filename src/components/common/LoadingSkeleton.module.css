@@ -2,23 +2,35 @@
 
 /* Base Skeleton Box */
 .skeletonBox {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-skeleton-base);
+  border-radius: var(--radius-sm);
+  isolation: isolate;
+}
+
+.skeletonBox::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
   background: linear-gradient(
     90deg,
-    var(--color-border-light) 25%,
-    var(--color-bg-subtle) 50%,
-    var(--color-border-light) 75%
+    transparent 0%,
+    rgba(255, 255, 255, 0) 20%,
+    var(--color-skeleton-highlight) 50%,
+    rgba(255, 255, 255, 0) 80%,
+    transparent 100%
   );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: var(--radius-sm);
+  animation: shimmer 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 @keyframes shimmer {
   0% {
-    background-position: 200% 0;
+    transform: translateX(-100%);
   }
   100% {
-    background-position: -200% 0;
+    transform: translateX(100%);
   }
 }
 

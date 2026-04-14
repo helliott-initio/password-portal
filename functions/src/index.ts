@@ -4,6 +4,7 @@ import { defineString, defineSecret } from 'firebase-functions/params';
 import { v4 as uuidv4 } from 'uuid';
 import * as nodemailer from 'nodemailer';
 import { encryptPassword, decryptPassword, hashApiKey, generateApiKey } from './utils/encryption';
+import { buildSearchTokens } from './utils/searchTokens';
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -38,6 +39,7 @@ interface PasswordDoc {
   emailSentAt?: admin.firestore.Timestamp;
   source: 'dashboard' | 'api' | 'batch';
   apiKeyId?: string;
+  searchTokens?: string[];
 }
 
 /**
@@ -89,6 +91,7 @@ export const createPasswordLink = onCall(
         status: 'pending',
         emailSent: false,
         source: 'dashboard',
+        searchTokens: buildSearchTokens(recipientEmail, recipientName),
       };
 
       await db.collection('passwords').doc(linkId).set(passwordDoc);
@@ -348,6 +351,10 @@ export const regeneratePasswordLink = onCall(
         status: 'pending',
         emailSent: false,
         source: 'dashboard',
+        searchTokens: buildSearchTokens(
+          originalData.recipientEmail,
+          originalData.recipientName
+        ),
       };
 
       // Use transaction to update original and create new
@@ -474,6 +481,7 @@ export const api = onRequest(
         emailSent: !!sendEmail,
         source: 'api',
         apiKeyId: apiKeyDoc.id,
+        searchTokens: buildSearchTokens(recipientEmail, recipientName),
         ...(sendEmail && { emailSentAt: admin.firestore.Timestamp.now() }),
       };
 
@@ -567,6 +575,73 @@ export const api = onRequest(
 );
 
 // ==================== Admin Functions ====================
+
+/**
+ * Backfill `searchTokens` on existing password documents. Admin-only.
+ * Idempotent — run it as many times as you want; it only touches docs that
+ * are missing or have an empty `searchTokens` field. Processes in batches of
+ * 400 to stay within Firestore's 500-op batch write limit.
+ */
+export const backfillSearchTokens = onCall(
+  { region: 'europe-west2', invoker: 'public', timeoutSeconds: 540 },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be logged in');
+    }
+
+    const userDoc = await db.collection('users').doc(request.auth.uid).get();
+    if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Admin access required');
+    }
+
+    const snapshot = await db.collection('passwords').get();
+    let updated = 0;
+    let skipped = 0;
+    let batch = db.batch();
+    let opsInBatch = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const existing = data.searchTokens as string[] | undefined;
+      if (existing && existing.length > 0) {
+        skipped++;
+        continue;
+      }
+      const tokens = buildSearchTokens(
+        data.recipientEmail || '',
+        data.recipientName
+      );
+      batch.update(doc.ref, { searchTokens: tokens });
+      opsInBatch++;
+      updated++;
+
+      if (opsInBatch >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        opsInBatch = 0;
+      }
+    }
+
+    if (opsInBatch > 0) {
+      await batch.commit();
+    }
+
+    await db.collection('audit_logs').add({
+      action: 'settings_change',
+      actorId: request.auth.uid,
+      actorEmail: userDoc.data()?.email,
+      details: { operation: 'backfillSearchTokens', updated, skipped },
+      ip: request.rawRequest?.ip || 'unknown',
+      timestamp: admin.firestore.Timestamp.now(),
+    });
+
+    return {
+      total: snapshot.size,
+      updated,
+      skipped,
+    };
+  }
+);
 
 /**
  * Create a new API key (admin only)

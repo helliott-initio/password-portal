@@ -2,10 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './components/common/Toast';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { SkeletonBox } from './components/common/LoadingSkeleton';
+import { FullPageLoader } from './components/common/FullPageLoader';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { CreatePasswordPage } from './pages/CreatePasswordPage';
+import { GeneratePasswordsPage } from './pages/GeneratePasswordsPage';
 import { PasswordViewPage } from './pages/PasswordViewPage';
 import { QueuePage } from './pages/QueuePage';
 import { BatchUploadPage } from './pages/BatchUploadPage';
@@ -13,27 +14,25 @@ import { SettingsPage } from './pages/SettingsPage';
 import './styles/global.css';
 
 // Protected route wrapper
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({
+  children,
+  requiredRole,
+}: {
+  children: React.ReactNode;
+  requiredRole?: 'admin';
+}) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          background: 'var(--color-pale-bg)',
-        }}
-      >
-        <SkeletonBox width="200px" height="24px" />
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (requiredRole === 'admin' && user.role !== 'admin') {
+    return <Navigate to="/admin" replace />;
   }
 
   return <>{children}</>;
@@ -64,6 +63,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/admin/generate"
+        element={
+          <ProtectedRoute>
+            <GeneratePasswordsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/admin/queue"
         element={
           <ProtectedRoute>
@@ -82,7 +89,7 @@ function AppRoutes() {
       <Route
         path="/admin/settings"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole="admin">
             <SettingsPage />
           </ProtectedRoute>
         }
