@@ -1,12 +1,13 @@
 name: Deploy to Firebase
 
+# Disabled: the build secrets aren't fully wired up, so CI-deployed bundles
+# ship with empty Firebase config and crash with auth/invalid-api-key in prod.
+# Deploys are being done manually from the dev environment via
+# `firebase deploy --only hosting`. Re-enable by restoring the `push` /
+# `pull_request` triggers once the GitHub secrets (FIREBASE_API_KEY,
+# FIREBASE_AUTH_DOMAIN, etc.) are set on the repo.
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build:
